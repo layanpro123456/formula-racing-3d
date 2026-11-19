@@ -707,8 +707,90 @@ html, body {
 }
 
 /* ==========================================================================
-   VICTORY & CHECKERED FLAG MODAL
+   PAUSE & VICTORY MODALS
    ========================================================================== */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: rgba(4, 6, 10, 0.82);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  backdrop-filter: blur(8px);
+  pointer-events: auto;
+}
+
+.modal {
+  background: #111620;
+  border: 1px solid #2a3346;
+  border-top: 4px solid #e10600;
+  padding: 32px 40px;
+  border-radius: 6px;
+  text-align: center;
+  min-width: 320px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.85);
+}
+
+.modal h2 {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 38px;
+  font-weight: 900;
+  margin: 8px 0 24px;
+  color: #fff;
+  letter-spacing: 1px;
+}
+
+.modal .eyebrow,
+.victory-modal .eyebrow {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 2px;
+  color: #94a3b8;
+  margin: 0;
+}
+
+.modal .primary-btn,
+.victory-modal .primary-btn {
+  background: #e10600;
+  color: #fff;
+  border: none;
+  padding: 12px 24px;
+  font-family: 'Barlow Condensed', sans-serif;
+  font-weight: 800;
+  font-size: 16px;
+  letter-spacing: 1px;
+  cursor: pointer;
+  border-radius: 4px;
+  margin-right: 12px;
+  transition: background 0.15s ease;
+}
+
+.modal .primary-btn:hover,
+.victory-modal .primary-btn:hover {
+  background: #ff1812;
+}
+
+.modal .secondary-btn {
+  background: #1e293b;
+  color: #94a3b8;
+  border: 1px solid #334155;
+  padding: 12px 24px;
+  font-family: 'Barlow Condensed', sans-serif;
+  font-weight: 800;
+  font-size: 16px;
+  letter-spacing: 1px;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: all 0.15s ease;
+}
+
+.modal .secondary-btn:hover {
+  background: #334155;
+  color: #fff;
+}
+
 .victory-modal {
   width: min(420px, 92vw);
   background: #0f172a;

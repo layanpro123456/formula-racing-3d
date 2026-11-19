@@ -1,4 +1,5 @@
 // Formula Racing 3D — Babylon.js Track & Infrastructure Generator
+// Mathematically synchronized with Spline3D and VehiclePhysics
 import {
   Scene,
   MeshBuilder,
@@ -11,10 +12,11 @@ import {
   TransformNode
 } from "@babylonjs/core";
 import { Track } from "@/data/tracks";
+import { Spline3D } from "@/lib/math/Spline3D";
 
-export function createBabylonTrack(track: Track, curvePoints: [number, number, number][], scene: Scene) {
+export function createBabylonTrack(track: Track, spline: Spline3D, scene: Scene) {
   const root = new TransformNode("trackRoot", scene);
-  const segments = 520;
+  const segments = 640;
   const halfW = track.width * 0.5;
   const kerbW = 0.95;
   const runoffW = 3.0;
@@ -37,36 +39,26 @@ export function createBabylonTrack(track: Track, curvePoints: [number, number, n
   const rightBarrierPath: Vector3[] = [];
 
   const up = new Vector3(0, 1, 0);
-  const numPoints = curvePoints.length;
-
-  // Helper to interpolate points
-  const getPointAt = (t: number): Vector3 => {
-    const rawIdx = t * (numPoints - 1);
-    const i = Math.floor(rawIdx);
-    const frac = rawIdx - i;
-    const p1 = curvePoints[i % numPoints];
-    const p2 = curvePoints[(i + 1) % numPoints];
-    const scale = 4.8;
-    return new Vector3(
-      (p1[0] + (p2[0] - p1[0]) * frac) * scale,
-      (p1[1] + (p2[1] - p1[1]) * frac) * scale * 0.8,
-      (p1[2] + (p2[2] - p1[2]) * frac) * scale
-    );
-  };
+  const pt = new Vector3();
+  const tangent = new Vector3();
+  const nextTan = new Vector3();
+  const cross = new Vector3();
+  const side = new Vector3();
 
   for (let i = 0; i <= segments; i++) {
-    const t = i / segments;
-    const pt = getPointAt(t);
-    const nextPt = getPointAt((t + 0.005) % 1.0);
-    const tangent = nextPt.subtract(pt).normalize();
+    const u = i / segments;
+    spline.getPointAtToRef(u, pt);
+    spline.getTangentAtToRef(u, tangent);
 
     // Tangent derivative curvature for authentic banking
-    const nextTan = getPointAt((t + 0.01) % 1.0).subtract(nextPt).normalize();
-    const deltaTan = nextTan.subtract(tangent);
-    const curvSign = (tangent.z * deltaTan.x - tangent.x * deltaTan.z) * 14.0;
-    const bankingAngle = Math.max(-0.14, Math.min(0.14, curvSign));
+    const nextU = (u + 0.005) % 1.0;
+    spline.getTangentAtToRef(nextU, nextTan);
+    Vector3.CrossToRef(tangent, nextTan, cross);
+    const curvSign = cross.y * 22.0;
+    const bankingAngle = Math.max(-0.12, Math.min(0.12, curvSign));
 
-    const side = Vector3.Cross(tangent, up).normalize();
+    Vector3.CrossToRef(tangent, up, side);
+    side.normalize();
     const bankAxis = up.add(side.scale(-bankingAngle)).normalize();
     const bankedSide = Vector3.Cross(tangent, bankAxis).normalize();
 

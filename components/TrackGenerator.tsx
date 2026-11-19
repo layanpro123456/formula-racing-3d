@@ -5,7 +5,16 @@ import * as THREE from "three";
 import { Track } from "@/data/tracks";
 
 export function build3DCurve(points: [number, number, number][], scale = 4.8): THREE.CatmullRomCurve3 {
-  const pts = points.map(([x, y, z]) => new THREE.Vector3(x * scale, y * scale * 0.8, z * scale));
+  // Strip duplicate closure point if provided, since CatmullRomCurve3(pts, true) handles closure automatically
+  const uniquePoints = points.slice();
+  if (uniquePoints.length > 1) {
+    const first = uniquePoints[0];
+    const last = uniquePoints[uniquePoints.length - 1];
+    if (first[0] === last[0] && first[1] === last[1] && first[2] === last[2]) {
+      uniquePoints.pop();
+    }
+  }
+  const pts = uniquePoints.map(([x, y, z]) => new THREE.Vector3(x * scale, y * scale * 0.8, z * scale));
   return new THREE.CatmullRomCurve3(pts, true, "catmullrom", 0.16);
 }
 
@@ -165,9 +174,11 @@ export function TrackSceneGeometry({ track, curve }: TrackGeneratorProps) {
         rKerbOuter.x, rKerbOuter.y, rKerbOuter.z, rRunoff.x, rRunoff.y, rRunoff.z
       );
 
-      // Armco Guardrail Centerlines
-      leftBarrierPts.push(pt.clone().addScaledVector(bankedSide, barrierOffset).add(new THREE.Vector3(0, 0.52, 0)));
-      rightBarrierPts.push(pt.clone().addScaledVector(bankedSide, -barrierOffset).add(new THREE.Vector3(0, 0.52, 0)));
+      // Armco Guardrail Centerlines (skip i === segments so closed CatmullRomCurve3 does not duplicate point at seam)
+      if (i < segments) {
+        leftBarrierPts.push(pt.clone().addScaledVector(bankedSide, barrierOffset).add(new THREE.Vector3(0, 0.52, 0)));
+        rightBarrierPts.push(pt.clone().addScaledVector(bankedSide, -barrierOffset).add(new THREE.Vector3(0, 0.52, 0)));
+      }
 
       // Place 150m / 100m / 50m braking boards approaching heavy braking zones
       if (Math.abs(curvSign) > 0.08 && i % 38 === 0 && i > 20) {

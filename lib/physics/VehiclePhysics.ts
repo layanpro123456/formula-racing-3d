@@ -162,14 +162,20 @@ export class VehiclePhysics {
 
     // 6. Engine Propulsion & Braking Dynamics
     let accelForce = 0;
-    if (inputs.accelerate) {
-      const gearMax = this.gearMaxSpeeds[this.gear] || 95;
-      const powerCurve = Math.max(0, 1.0 - Math.pow(this.speed / gearMax, 1.35));
-      accelForce = (33 - this.gear * 2.1) * powerCurve * frictionMu;
-    }
-
     let brakeForce = 0;
     this.isLockup = false;
+
+    if (inputs.accelerate) {
+      if (this.speed < -0.2) {
+        // Oppose reverse motion with braking to bring car to rest
+        brakeForce = 25 * frictionMu;
+      } else {
+        const gearMax = this.gearMaxSpeeds[this.gear] || 95;
+        const safeSpeedRatio = Math.max(0, Math.min(1, Math.max(0, this.speed) / gearMax));
+        const powerCurve = Math.max(0, 1.0 - Math.pow(safeSpeedRatio, 1.35));
+        accelForce = (33 - this.gear * 2.1) * powerCurve * frictionMu;
+      }
+    }
 
     if (inputs.brake) {
       if (this.speed > 0.5) {
@@ -185,7 +191,7 @@ export class VehiclePhysics {
         }
 
         // Brake disc thermal absorption: energy dissipated into heat
-        const heatGen = (this.speed * 12.0) * dt;
+        const heatGen = (Math.max(0, this.speed) * 12.0) * dt;
         this.brakeTemp = Math.min(950, this.brakeTemp + heatGen);
       } else {
         // Reverse gear
@@ -194,30 +200,60 @@ export class VehiclePhysics {
     }
 
     // Cooling of brake discs via ram-air ducts (exponential decay towards 100 C)
-    const coolingRate = 1.6 + (this.speed / 24);
+    const coolingRate = 1.6 + (Math.max(0, this.speed) / 24);
     this.brakeTemp = Math.max(100, THREE.MathUtils.lerp(this.brakeTemp, 100, dt * coolingRate));
+    if (!Number.isFinite(this.brakeTemp)) this.brakeTemp = 100;
 
-    // Net longitudinal acceleration
-    const netLongitudinalAccel = accelForce - (brakeForce + dragForce * 0.018 + 5.8);
+    // Rolling resistance & Net longitudinal acceleration
+    let netLongitudinalAccel = 0;
+    if (this.speed > 0.05) {
+      // Forward motion: drag, brakes and rolling resistance oppose forward motion
+      const resistance = brakeForce + dragForce * 0.018 + 5.8;
+      netLongitudinalAccel = accelForce - resistance;
+    } else if (this.speed < -0.05) {
+      // Reverse motion: drag, brakes and rolling resistance oppose reverse motion
+      const resistance = brakeForce + dragForce * 0.018 + 5.8;
+      netLongitudinalAccel = accelForce + resistance;
+    } else {
+      // Stationary: only accelerate if throttle or reverse input is active
+      if (inputs.accelerate || inputs.brake) {
+        netLongitudinalAccel = accelForce;
+      } else {
+        netLongitudinalAccel = 0;
+        this.speed = 0;
+      }
+    }
 
     // 7. Integrate Speed & Long G-Force
     const prevSpeed = this.speed;
     this.speed += netLongitudinalAccel * dt;
+
+    // Prevent overshoot into reverse/forward when coasting to a stop
+    if (!inputs.accelerate && !inputs.brake) {
+      if ((prevSpeed > 0 && this.speed < 0) || (prevSpeed < 0 && this.speed > 0) || Math.abs(this.speed) < 0.05) {
+        this.speed = 0;
+      }
+    }
+
     this.speed = THREE.MathUtils.clamp(this.speed, -15, 101); // Top speed ~364 km/h
+    if (!Number.isFinite(this.speed)) this.speed = 0;
 
     this.gForceLong = dt > 0.0001 ? (this.speed - prevSpeed) / (dt * this.g) : 0;
+    if (!Number.isFinite(this.gForceLong)) this.gForceLong = 0;
 
     // 8. Lateral Dynamics & Pacejka-Inspired Cornering
     // Slip angle alpha = steerAngle - (lateralVelocity / longitudinalVelocity)
-    const turnRate = this.steerAngle * (1.15 + this.speed * 0.024);
+    const turnRate = this.steerAngle * (1.15 + Math.abs(this.speed) * 0.024);
     if (Math.abs(this.speed) > 0.1) {
       this.heading += turnRate * dt * (this.speed >= 0 ? 1 : -1);
     }
+    if (!Number.isFinite(this.heading)) this.heading = 0;
 
     this.gForceLat = (this.speed * this.steerAngle * 4.6) / this.g;
+    if (!Number.isFinite(this.gForceLat)) this.gForceLat = 0;
 
     // Tire slip intensity for audio and smoke effects
-    const latSlip = Math.abs(this.steerAngle) * (this.speed / 50);
+    const latSlip = Math.abs(this.steerAngle) * (Math.abs(this.speed) / 50);
     this.tireSlip = THREE.MathUtils.clamp(this.isLockup ? 1.0 : latSlip, 0, 1);
 
     // Forward and Right vectors
@@ -229,7 +265,13 @@ export class VehiclePhysics {
     this.position.add(this._scratchVec);
 
     // Ground elevation clamping along track
-    this.position.y = THREE.MathUtils.lerp(this.position.y, this._splinePt.y, dt * 9);
+    if (Number.isFinite(this._splinePt.y)) {
+      this.position.y = THREE.MathUtils.lerp(this.position.y, this._splinePt.y, dt * 9);
+    }
+
+    if (!Number.isFinite(this.position.x) || !Number.isFinite(this.position.y) || !Number.isFinite(this.position.z)) {
+      this.position.copy(this._splinePt);
+    }
 
     // 10. Elastic-Plastic Barrier Collision Response
     this.resolveBarrierCollisions(track);
@@ -256,12 +298,12 @@ export class VehiclePhysics {
     this.lapTime += dt;
 
     return {
-      speedKmh: Math.round(this.speed * 3.6),
-      speedMs: this.speed,
+      speedKmh: Math.round((Number.isFinite(this.speed) ? this.speed : 0) * 3.6),
+      speedMs: Number.isFinite(this.speed) ? this.speed : 0,
       gear: this.gear,
-      rpm: Math.round(this.rpm),
-      rpmRatio: THREE.MathUtils.clamp((this.rpm - 4000) / (12500 - 4000), 0, 1),
-      lapTime: this.lapTime,
+      rpm: Math.round(Number.isFinite(this.rpm) ? this.rpm : 4000),
+      rpmRatio: THREE.MathUtils.clamp(((Number.isFinite(this.rpm) ? this.rpm : 4000) - 4000) / (12500 - 4000), 0, 1),
+      lapTime: Number.isFinite(this.lapTime) ? this.lapTime : 0,
       currentSector: this.currentSector,
       lastSectorTime: this.lastSectorTime,
       drsActive: this.drsActive,
@@ -270,9 +312,9 @@ export class VehiclePhysics {
       offTrack: this.offTrack,
       gForceLat: parseFloat((Number.isFinite(this.gForceLat) ? this.gForceLat : 0).toFixed(2)),
       gForceLong: parseFloat((Number.isFinite(this.gForceLong) ? this.gForceLong : 0).toFixed(2)),
-      brakeTemp: Math.round(this.brakeTemp),
+      brakeTemp: Math.round(Number.isFinite(this.brakeTemp) ? this.brakeTemp : 100),
       isLockup: this.isLockup,
-      tireSlip: parseFloat(this.tireSlip.toFixed(2)),
+      tireSlip: parseFloat((Number.isFinite(this.tireSlip) ? this.tireSlip : 0).toFixed(2)),
       suspensionOffsets: this.suspensionOffsets
     };
   }
@@ -344,7 +386,7 @@ export class VehiclePhysics {
     this._scratchSide.y = 0;
     const distFromCenter = this._scratchSide.length();
 
-    if (distFromCenter > maxOffset) {
+    if (distFromCenter > maxOffset && distFromCenter > 0.001) {
       // Elastic-Plastic impact with Armco Guardrail
       this._scratchSide.normalize();
       
@@ -362,20 +404,27 @@ export class VehiclePhysics {
   }
 
   private updateGearsAndRPM() {
-    if (this.speed <= 0.1) {
+    if (!Number.isFinite(this.speed) || this.speed <= 0.1) {
       this.gear = 1;
       this.rpm = 4000;
       return;
     }
 
+    this.gear = 1;
     for (let g = 1; g <= 8; g++) {
       if (this.speed < this.gearMaxSpeeds[g] || g === 8) {
         this.gear = g;
         const prevGearSpeed = this.gearMaxSpeeds[g - 1] || 0;
-        const speedInGear = (this.speed - prevGearSpeed) / (this.gearMaxSpeeds[g] - prevGearSpeed);
-        this.rpm = 4500 + THREE.MathUtils.clamp(speedInGear, 0, 1) * 7800;
+        const gearSpan = Math.max(1, this.gearMaxSpeeds[g] - prevGearSpeed);
+        const speedInGear = (this.speed - prevGearSpeed) / gearSpan;
+        const safeRatio = Math.max(0, Math.min(1, speedInGear));
+        this.rpm = 4500 + safeRatio * 7800;
         break;
       }
+    }
+
+    if (!Number.isFinite(this.rpm)) {
+      this.rpm = 4000;
     }
   }
 }

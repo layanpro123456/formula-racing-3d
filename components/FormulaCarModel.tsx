@@ -64,43 +64,48 @@ export function FormulaCarModel({
   const baseRearY = 0.36;
 
   useFrame((_, delta) => {
+    const safeSpeed = Number.isFinite(speed) ? speed : 0;
+    const safeBrakeTemp = Number.isFinite(brakeTemp) ? brakeTemp : 100;
+    const safeSteerAngle = Number.isFinite(steerAngle) ? steerAngle : 0;
+    const safeTireSlip = Number.isFinite(tireSlip) ? tireSlip : 0;
+
     // Wheel spin (omega = v / r) - locks up if inside front wheel locks
-    const angularVelocity = (isLockup ? 0 : speed) / wheelRadius;
+    const angularVelocity = (isLockup ? 0 : safeSpeed) / wheelRadius;
     wheelSpin.current += angularVelocity * delta;
 
     // Apply continuous axle rotation
     if (wheelFL.current) {
       wheelFL.current.rotation.x = isLockup ? wheelSpin.current * 0.1 : wheelSpin.current;
-      wheelFL.current.position.y = baseFrontY + suspensionOffsets[0];
+      wheelFL.current.position.y = baseFrontY + (suspensionOffsets[0] || 0);
     }
     if (wheelFR.current) {
       wheelFR.current.rotation.x = wheelSpin.current;
-      wheelFR.current.position.y = baseFrontY + suspensionOffsets[1];
+      wheelFR.current.position.y = baseFrontY + (suspensionOffsets[1] || 0);
     }
     if (wheelRL.current) {
       wheelRL.current.rotation.x = wheelSpin.current;
-      wheelRL.current.position.y = baseRearY + suspensionOffsets[2];
+      wheelRL.current.position.y = baseRearY + (suspensionOffsets[2] || 0);
     }
     if (wheelRR.current) {
       wheelRR.current.rotation.x = wheelSpin.current;
-      wheelRR.current.position.y = baseRearY + suspensionOffsets[3];
+      wheelRR.current.position.y = baseRearY + (suspensionOffsets[3] || 0);
     }
 
     // Front steering assembly with camber roll
     if (frontSteerGroup.current) {
       frontSteerGroup.current.rotation.y = THREE.MathUtils.lerp(
         frontSteerGroup.current.rotation.y,
-        steerAngle * 0.44,
+        safeSteerAngle * 0.44,
         0.28
       );
       // Dynamic negative camber during hard cornering
-      frontSteerGroup.current.rotation.z = -steerAngle * 0.08;
+      frontSteerGroup.current.rotation.z = -safeSteerAngle * 0.08;
     }
 
     // Dynamic brake disc incandescence based on temperature
     if (brakeDiscMaterial.current) {
       // Glow begins at 450 C, peaks at 950 C
-      const glowRatio = THREE.MathUtils.clamp((brakeTemp - 450) / 450, 0, 1);
+      const glowRatio = THREE.MathUtils.clamp((safeBrakeTemp - 450) / 450, 0, 1);
       brakeDiscMaterial.current.emissiveIntensity = glowRatio * 4.8;
       // Color shifts from dull red (500 C) to incandescent bright orange-red (900 C)
       brakeDiscMaterial.current.emissive.setRGB(1.0, glowRatio * 0.38, 0.0);
@@ -108,8 +113,8 @@ export function FormulaCarModel({
 
     // Smoke particle scaling when slipping or locking
     if (smokeGroup.current) {
-      const activeSlip = isLockup || tireSlip > 0.42;
-      const targetScale = activeSlip ? THREE.MathUtils.clamp((speed / 30) * 1.5, 0.5, 2.2) : 0;
+      const activeSlip = isLockup || safeTireSlip > 0.42;
+      const targetScale = activeSlip ? THREE.MathUtils.clamp((safeSpeed / 30) * 1.5, 0.5, 2.2) : 0;
       smokeGroup.current.scale.setScalar(
         THREE.MathUtils.lerp(smokeGroup.current.scale.x, targetScale, delta * 12)
       );

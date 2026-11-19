@@ -61,15 +61,26 @@ export function RacingHUD({
 
   const playerPos = leaderboard.findIndex((item) => item.isPlayer) + 1;
 
+  // Defensively guarded display values
+  const displaySpeed = Number.isFinite(telemetry.speedKmh) ? telemetry.speedKmh : 0;
+  const displayRpm = Number.isFinite(telemetry.rpm) ? telemetry.rpm : 4000;
+  const displayBrakeTemp = Number.isFinite(telemetry.brakeTemp) ? telemetry.brakeTemp : 100;
+  const displayGear = Number.isFinite(telemetry.gear)
+    ? (telemetry.speedMs < -0.1 ? "R" : telemetry.gear)
+    : 1;
+  const displayLatG = Number.isFinite(telemetry.gForceLat) ? telemetry.gForceLat : 0;
+  const displayLongG = Number.isFinite(telemetry.gForceLong) ? telemetry.gForceLong : 0;
+
   // Format lap time MM:SS.mmm
   const formatTime = (seconds: number) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = (seconds % 60).toFixed(3);
+    const s = Number.isFinite(seconds) && seconds >= 0 ? seconds : 0;
+    const mins = Math.floor(s / 60);
+    const secs = (s % 60).toFixed(3);
     return `${mins.toString().padStart(2, "0")}:${secs.padStart(6, "0")}`;
   };
 
   // Shift light LEDs (15 LEDs: 5 green, 5 yellow, 5 red/purple)
-  const rpmRatio = telemetry.rpmRatio;
+  const rpmRatio = Number.isFinite(telemetry.rpmRatio) ? Math.max(0, Math.min(1, telemetry.rpmRatio)) : 0;
   const numActiveLEDs = Math.floor(rpmRatio * 15);
 
   return (
@@ -162,11 +173,11 @@ export function RacingHUD({
         <div className="speed-gear-cluster">
           <div className="gear-display">
             <span className="label">GEAR</span>
-            <span className="value">{telemetry.speedMs < -0.1 ? "R" : telemetry.gear}</span>
+            <span className="value">{displayGear}</span>
           </div>
 
           <div className="speed-display">
-            <span className="value">{telemetry.speedKmh}</span>
+            <span className="value">{displaySpeed}</span>
             <span className="unit">KM/H</span>
           </div>
 
@@ -174,7 +185,7 @@ export function RacingHUD({
             <span className={`drs-indicator ${telemetry.drsActive ? "active" : telemetry.drsAvailable ? "available" : ""}`}>
               DRS
             </span>
-            <span className="rpm-text">{telemetry.rpm} RPM</span>
+            <span className="rpm-text">{displayRpm} RPM</span>
           </div>
         </div>
       </div>
@@ -205,13 +216,13 @@ export function RacingHUD({
           </div>
           <div className="card-row">
             <span className="lbl">BRAKES</span>
-            <span className={`val mono ${telemetry.brakeTemp > 700 ? "brake-hot" : telemetry.brakeTemp > 450 ? "brake-warm" : "brake-optimal"}`}>
-              {telemetry.brakeTemp}°C
+            <span className={`val mono ${displayBrakeTemp > 700 ? "brake-hot" : displayBrakeTemp > 450 ? "brake-warm" : "brake-optimal"}`}>
+              {displayBrakeTemp}°C
             </span>
           </div>
           <div className="card-row g-forces">
-            <span>LAT: <b>{telemetry.gForceLat}G</b></span>
-            <span>LONG: <b>{telemetry.gForceLong}G</b></span>
+            <span>LAT: <b>{displayLatG}G</b></span>
+            <span>LONG: <b>{displayLongG}G</b></span>
           </div>
         </div>
 

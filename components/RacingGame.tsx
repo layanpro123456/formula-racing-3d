@@ -74,6 +74,7 @@ function Driver({
   const vCamOffset = useRef(new THREE.Vector3());
 
   const prevT = useRef(0);
+  const isFirstFrame = useRef(true);
   const [carRenderProps, setCarRenderProps] = useState({
     steerAngle: 0,
     speed: 0,
@@ -94,6 +95,7 @@ function Driver({
   useEffect(() => {
     physics.current.reset(startPt, startHeading);
     prevT.current = 0;
+    isFirstFrame.current = true;
   }, [track, spline, startPt, startHeading]);
 
   // Input listeners
@@ -169,17 +171,28 @@ function Driver({
 
     // 5. Update Camera Rig
     if (cameraRef.current) {
-      const heading = physics.current.heading;
-      const speed = physics.current.speed;
+      const heading = Number.isFinite(physics.current.heading) ? physics.current.heading : 0;
+      const speed = Number.isFinite(physics.current.speed) ? physics.current.speed : 0;
+      const carPos = physics.current.position;
+
+      if (!Number.isFinite(carPos.x) || !Number.isFinite(carPos.y) || !Number.isFinite(carPos.z)) {
+        carPos.copy(startPt);
+      }
 
       if (cameraMode === "chase") {
         // Third-person chase camera with dynamic distance & speed FOV
         vCamOffset.current.set(-Math.sin(heading) * 8.5, 4.2, -Math.cos(heading) * 8.5);
-        vCamDesired.current.copy(physics.current.position).add(vCamOffset.current);
-        vTarget.current.copy(physics.current.position).addScaledVector(vUp.current, 1.2);
+        vCamDesired.current.copy(carPos).add(vCamOffset.current);
+        vTarget.current.copy(carPos).addScaledVector(vUp.current, 1.2);
 
-        cameraRef.current.position.lerp(vCamDesired.current, 1 - Math.exp(-6 * dt));
-        cameraRef.current.lookAt(vTarget.current);
+        if (isFirstFrame.current) {
+          cameraRef.current.position.copy(vCamDesired.current);
+          cameraRef.current.lookAt(vTarget.current);
+          isFirstFrame.current = false;
+        } else {
+          cameraRef.current.position.lerp(vCamDesired.current, 1 - Math.exp(-6 * dt));
+          cameraRef.current.lookAt(vTarget.current);
+        }
 
         // Speed-dependent dynamic FOV
         const targetFov = 62 + (speed / 95) * 16;
@@ -188,7 +201,7 @@ function Driver({
       } else if (cameraMode === "cockpit") {
         // Cockpit / Halo POV
         vCamOffset.current.set(0, 0.76, 0.25);
-        vCamDesired.current.copy(physics.current.position).add(vCamOffset.current);
+        vCamDesired.current.copy(carPos).add(vCamOffset.current);
         vTarget.current.copy(vCamDesired.current).add(
           new THREE.Vector3(Math.sin(heading) * 15, 0, Math.cos(heading) * 15)
         );
@@ -197,10 +210,11 @@ function Driver({
         cameraRef.current.lookAt(vTarget.current);
         cameraRef.current.fov = 75;
         cameraRef.current.updateProjectionMatrix();
+        isFirstFrame.current = false;
       } else if (cameraMode === "nose") {
         // Front nose wing POV
         vCamOffset.current.set(0, 0.45, 1.8);
-        vCamDesired.current.copy(physics.current.position).add(vCamOffset.current);
+        vCamDesired.current.copy(carPos).add(vCamOffset.current);
         vTarget.current.copy(vCamDesired.current).add(
           new THREE.Vector3(Math.sin(heading) * 18, -0.2, Math.cos(heading) * 18)
         );
@@ -209,6 +223,7 @@ function Driver({
         cameraRef.current.lookAt(vTarget.current);
         cameraRef.current.fov = 85;
         cameraRef.current.updateProjectionMatrix();
+        isFirstFrame.current = false;
       }
     }
 

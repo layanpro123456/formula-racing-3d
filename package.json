@@ -1,6 +1,7 @@
 {
   "name": "formula-racing-3d",
   "version": "1.0.0",
+  "description": "High-performance browser-based 3D Formula motorsport simulator built with Next.js 14, Babylon.js, Havok Physics WASM, procedural tracks, and autonomous AI grid.",
   "private": true,
   "scripts": {
     "dev": "next dev",

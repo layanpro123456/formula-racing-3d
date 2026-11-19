@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <defs>
+    <linearGradient id="iconRed" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ff1e1e"/>
+      <stop offset="100%" stop-color="#b30000"/>
+    </linearGradient>
+    <linearGradient id="iconCyan" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#00f0ff"/>
+      <stop offset="100%" stop-color="#0066ff"/>
+    </linearGradient>
+  </defs>
+  <rect width="128" height="128" rx="28" fill="#0a0d14"/>
+  <rect x="2" y="2" width="124" height="124" rx="26" fill="none" stroke="#222f46" stroke-width="3"/>
+  <!-- Aerodynamic Racing Wing & 3D -->
+  <polygon points="18,34 110,34 94,52 14,52" fill="url(#iconRed)"/>
+  <polygon points="26,60 102,60 88,76 22,76" fill="url(#iconCyan)"/>
+  <polygon points="34,84 94,84 82,98 30,98" fill="#ffffff"/>
+  <!-- Checkered Accent -->
+  <polygon points="84,34 110,34 94,52 68,52" fill="#ffffff" opacity="0.3"/>
+</svg>

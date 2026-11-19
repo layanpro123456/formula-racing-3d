@@ -1,0 +1,345 @@
+"use client";
+
+import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
+import * as THREE from "three";
+import {
+  Engine,
+  Scene,
+  Vector3,
+  Color3,
+  Color4,
+  HemisphericLight,
+  DirectionalLight,
+  ShadowGenerator,
+  FollowCamera,
+  TargetCamera
+} from "@babylonjs/core";
+import { Track } from "@/data/tracks";
+import { build3DCurve } from "@/components/TrackGenerator";
+import { createBabylonTrack } from "./BabylonTrackGenerator";
+import { BabylonVehicle } from "./BabylonVehicle";
+import { getHavokPlugin } from "@/lib/babylon/havokLoader";
+import { VehiclePhysics, TelemetryData, VehicleInputs } from "@/lib/physics/VehiclePhysics";
+import { AISimulator, AICarState } from "@/lib/ai/AIDriver";
+import { engineAudio } from "@/lib/audio/EngineSound";
+import { RacingHUD } from "@/components/RacingHUD";
+
+type CameraMode = "chase" | "cockpit" | "nose";
+
+interface BabylonRacingGameProps {
+  track: Track;
+  sessionMode: "grandprix" | "practice" | "qualifying";
+  liveryIndex: number;
+  onExitToMenu: () => void;
+}
+
+const defaultTelemetry: TelemetryData = {
+  speedKmh: 0,
+  speedMs: 0,
+  gear: 1,
+  rpm: 4000,
+  rpmRatio: 0,
+  lapTime: 0,
+  currentSector: 1,
+  lastSectorTime: 0,
+  drsActive: false,
+  drsAvailable: false,
+  onKerb: false,
+  offTrack: false,
+  gForceLat: 0,
+  gForceLong: 0,
+  brakeTemp: 100,
+  isLockup: false,
+  tireSlip: 0,
+  suspensionOffsets: [0, 0, 0, 0]
+};
+
+export default function BabylonRacingGame({
+  track,
+  sessionMode,
+  liveryIndex,
+  onExitToMenu
+}: BabylonRacingGameProps) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [telemetry, setTelemetry] = useState<TelemetryData>(defaultTelemetry);
+  const [playerLap, setPlayerLap] = useState(1);
+  const [totalLaps, setTotalLaps] = useState(sessionMode === "qualifying" ? 1 : track.lapsDefault);
+  const [cameraMode, setCameraMode] = useState<CameraMode>("chase");
+  const [isAudioMuted, setIsAudioMuted] = useState(false);
+  const [countdown, setCountdown] = useState<number | null>(null);
+  const [isPaused, setIsPaused] = useState(false);
+  const [isFinished, setIsFinished] = useState(false);
+
+  const physicsRef = useRef(new VehiclePhysics());
+  const aiSim = useMemo(() => new AISimulator(), []);
+  const [aiCars, setAiCars] = useState<AICarState[]>([]);
+
+  const spline = useMemo(() => build3DCurve(track.points), [track]);
+
+  useEffect(() => {
+    if (!canvasRef.current) return;
+
+    let engine: Engine;
+    let scene: Scene;
+    let vehicle: BabylonVehicle;
+    let isDisposed = false;
+
+    const keys: Record<string, boolean> = {};
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", " ", "e", "E"].includes(e.key)) {
+        e.preventDefault();
+      }
+      keys[e.key.toLowerCase()] = true;
+    };
+    const onKeyUp = (e: KeyboardEvent) => {
+      keys[e.key.toLowerCase()] = false;
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("keyup", onKeyUp);
+
+    async function initBabylon() {
+      if (!canvasRef.current || isDisposed) return;
+
+      // 1. Initialize Babylon.js Engine & Scene
+      engine = new Engine(canvasRef.current, true, { preserveDrawingBuffer: true, stencil: true });
+      scene = new Scene(engine);
+      scene.clearColor = Color4.FromHexString(`${track.skyColor}FF`);
+
+      // 2. Initialize Havok Physics WASM Plugin
+      try {
+        const havokPlugin = await getHavokPlugin();
+        scene.enablePhysics(new Vector3(0, -9.81, 0), havokPlugin);
+      } catch (e) {
+        console.warn("Havok Physics fallback to deterministic kinematics:", e);
+      }
+
+      // 3. Lighting & Shadows
+      const ambient = new HemisphericLight("hemiLight", new Vector3(0, 1, 0), scene);
+      ambient.intensity = 0.65;
+      ambient.groundColor = new Color3(0.2, 0.2, 0.2);
+
+      const sun = new DirectionalLight("sunLight", new Vector3(-1, -2, -1), scene);
+      sun.position = new Vector3(50, 70, 30);
+      sun.intensity = 1.8;
+
+      // 4. Generate Procedural 3D Banked Track
+      createBabylonTrack(track, track.points, scene);
+
+      // 5. Build Formula Car Model
+      vehicle = new BabylonVehicle("playerF1", liveryIndex, scene);
+
+      // Camera
+      const camera = new TargetCamera("mainCam", new Vector3(0, 5, -10), scene);
+      camera.fov = 1.1;
+
+      // Start position from spline
+      const startPt = spline.getPointAt(0);
+      const startTan = spline.getTangentAt(0).normalize();
+      const startHeading = Math.atan2(startTan.x, startTan.z);
+
+      physicsRef.current.reset(
+        new THREE.Vector3(startPt.x, startPt.y, startPt.z),
+        startHeading
+      );
+
+      // Initialize AI Grid
+      if (sessionMode === "grandprix") {
+        aiSim.initializeGrid(track, spline);
+        setAiCars([...aiSim.cars]);
+      }
+
+      // Initialize Sound
+      engineAudio.init();
+
+      let prevT = 0;
+
+      // Render & Simulation Loop
+      engine.runRenderLoop(() => {
+        if (!scene || isDisposed) return;
+
+        const dt = Math.min(engine.getDeltaTime() / 1000, 0.04);
+
+        if (!isPaused && !isFinished) {
+          const inputs: VehicleInputs = {
+            accelerate: keys["w"] || keys["arrowup"],
+            brake: keys["s"] || keys["arrowdown"],
+            steerLeft: keys["a"] || keys["arrowleft"],
+            steerRight: keys["d"] || keys["arrowright"],
+            drs: keys["e"] || keys[" "]
+          };
+
+          // Step Physics Engine
+          const tData = physicsRef.current.update(dt, inputs, track, spline);
+
+          // Update Babylon Vehicle Position & Rotation
+          const p = physicsRef.current.position;
+          vehicle.root.position.set(p.x, p.y, p.z);
+          vehicle.root.rotation.y = physicsRef.current.heading;
+          vehicle.root.rotation.x = physicsRef.current.pitch;
+          vehicle.root.rotation.z = physicsRef.current.roll;
+
+          // Update Wheels, Steering & Brake Glow
+          vehicle.update(
+            physicsRef.current.speed,
+            physicsRef.current.steerAngle,
+            dt,
+            inputs.brake,
+            tData.brakeTemp,
+            tData.drsActive
+          );
+
+          // Update Camera Position & Target
+          const h = physicsRef.current.heading;
+          if (cameraMode === "chase") {
+            const camX = p.x - Math.sin(h) * 8.5;
+            const camY = p.y + 4.2;
+            const camZ = p.z - Math.cos(h) * 8.5;
+            camera.position = Vector3.Lerp(camera.position, new Vector3(camX, camY, camZ), 1 - Math.exp(-6 * dt));
+            camera.setTarget(new Vector3(p.x, p.y + 1.2, p.z));
+            camera.fov = 1.05 + (tData.speedMs / 95) * 0.25;
+          } else if (cameraMode === "cockpit") {
+            camera.position.set(p.x, p.y + 0.76, p.z);
+            camera.setTarget(new Vector3(p.x + Math.sin(h) * 15, p.y + 0.76, p.z + Math.cos(h) * 15));
+            camera.fov = 1.25;
+          } else {
+            camera.position.set(p.x, p.y + 0.45, p.z);
+            camera.setTarget(new Vector3(p.x + Math.sin(h) * 18, p.y + 0.35, p.z + Math.cos(h) * 18));
+            camera.fov = 1.4;
+          }
+
+          // Engine Audio
+          engineAudio.update(
+            tData.rpmRatio,
+            tData.speedMs,
+            inputs.brake,
+            Math.abs(physicsRef.current.steerAngle) > 0.35
+          );
+
+          // Lap detection
+          if (prevT > 0.85 && physicsRef.current.currentT < 0.15) {
+            setPlayerLap((curr) => {
+              if (curr >= totalLaps) {
+                setIsFinished(true);
+                engineAudio.stop();
+                return curr;
+              }
+              return curr + 1;
+            });
+            physicsRef.current.lapTime = 0;
+          }
+          prevT = physicsRef.current.currentT;
+
+          // AI Simulation
+          aiSim.update(dt, track, spline, physicsRef.current.position, true);
+
+          setTelemetry(tData);
+        }
+
+        scene.render();
+      });
+
+      const onResize = () => engine && engine.resize();
+      window.addEventListener("resize", onResize);
+    }
+
+    initBabylon();
+
+    return () => {
+      isDisposed = true;
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("keyup", onKeyUp);
+      engineAudio.stop();
+      if (engine) {
+        engine.stopRenderLoop();
+        engine.dispose();
+      }
+    };
+  }, [track, spline, sessionMode, liveryIndex, totalLaps, cameraMode, isPaused, isFinished, aiSim]);
+
+  // Synchronize AI positions periodically
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setAiCars([...aiSim.cars]);
+    }, 120);
+    return () => clearInterval(interval);
+  }, [aiSim]);
+
+  // Key shortcuts
+  useEffect(() => {
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key.toLowerCase() === "c") {
+        setCameraMode((prev) => (prev === "chase" ? "cockpit" : prev === "cockpit" ? "nose" : "chase"));
+      } else if (e.key.toLowerCase() === "m") {
+        const muted = engineAudio.toggleMute();
+        setIsAudioMuted(muted);
+      }
+    };
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  }, []);
+
+  return (
+    <div className="game" style={{ width: "100vw", height: "100vh", position: "relative" }}>
+      {/* Babylon.js WebGL Canvas */}
+      <canvas
+        ref={canvasRef}
+        style={{ width: "100%", height: "100%", position: "absolute", inset: 0, outline: "none" }}
+      />
+
+      {/* Broadcast F1 Telemetry HUD */}
+      <RacingHUD
+        telemetry={telemetry}
+        playerLap={playerLap}
+        totalLaps={totalLaps}
+        aiCars={aiCars}
+        track={track}
+        cameraMode={cameraMode}
+        onToggleCamera={() =>
+          setCameraMode((prev) => (prev === "chase" ? "cockpit" : prev === "cockpit" ? "nose" : "chase"))
+        }
+        onPause={() => setIsPaused((prev) => !prev)}
+        isAudioMuted={isAudioMuted}
+        onToggleAudio={() => {
+          const m = engineAudio.toggleMute();
+          setIsAudioMuted(m);
+        }}
+        countdown={countdown}
+      />
+
+      {/* Paused Modal */}
+      {isPaused && (
+        <div className="modal-backdrop">
+          <div className="modal">
+            <p className="eyebrow">BABYLON.JS HAVOK ENGINE</p>
+            <h2>SESSION PAUSED</h2>
+            <button className="primary-btn" onClick={() => setIsPaused(false)}>
+              RESUME <span>→</span>
+            </button>
+            <button className="secondary-btn" onClick={onExitToMenu}>
+              EXIT TO PADDOCK
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Victory Modal */}
+      {isFinished && (
+        <div className="modal-backdrop">
+          <div className="victory-modal">
+            <p className="eyebrow">BABYLON.JS RACE CONTROL</p>
+            <h2>CHECKERED FLAG</h2>
+            <div className="victory-pos">
+              FINISH TIME: {Math.floor(telemetry.lapTime / 60)}:
+              {(telemetry.lapTime % 60).toFixed(2).padStart(5, "0")}
+            </div>
+            <button className="primary-btn" onClick={onExitToMenu}>
+              RETURN TO PADDOCK <span>→</span>
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

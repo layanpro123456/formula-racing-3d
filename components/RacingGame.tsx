@@ -11,10 +11,12 @@ import { VehiclePhysics, TelemetryData, VehicleInputs } from "@/lib/physics/Vehi
 import { AISimulator, AICarState } from "@/lib/ai/AIDriver";
 import { engineAudio } from "@/lib/audio/EngineSound";
 import { RacingHUD } from "@/components/RacingHUD";
+import BabylonRacingGame from "@/components/babylon/BabylonRacingGame";
 
 type GameState = "menu" | "countdown" | "racing" | "paused" | "finished";
 type SessionMode = "grandprix" | "practice" | "qualifying";
 type CameraMode = "chase" | "cockpit" | "nose";
+type EngineType = "three" | "babylon";
 
 const defaultTelemetry: TelemetryData = {
   speedKmh: 0,
@@ -269,6 +271,7 @@ export default function RacingGame() {
   const [track, setTrack] = useState<Track>(TRACKS[0]);
   const [state, setState] = useState<GameState>("menu");
   const [sessionMode, setSessionMode] = useState<SessionMode>("grandprix");
+  const [engineType, setEngineType] = useState<EngineType>("three");
   const [liveryIndex, setLiveryIndex] = useState(0);
   const [cameraMode, setCameraMode] = useState<CameraMode>("chase");
   const [isAudioMuted, setIsAudioMuted] = useState(false);
@@ -367,6 +370,17 @@ export default function RacingGame() {
     [totalLaps]
   );
 
+  if (engineType === "babylon" && state === "racing") {
+    return (
+      <BabylonRacingGame
+        track={track}
+        sessionMode={sessionMode}
+        liveryIndex={liveryIndex}
+        onExitToMenu={() => setState("menu")}
+      />
+    );
+  }
+
   return (
     <div className="game">
       {/* 3D WebGL Canvas with ACES Tone Mapping & Atmospheric Fog */}
@@ -441,6 +455,25 @@ export default function RacingGame() {
                 </option>
               ))}
             </select>
+          </div>
+
+          {/* 3D Engine Architecture Selector */}
+          <div className="form-group">
+            <label>3D SIMULATION ENGINE</label>
+            <div className="pills-group" style={{ gridTemplateColumns: "1fr 1fr" }}>
+              <button
+                className={`pill-btn ${engineType === "three" ? "active" : ""}`}
+                onClick={() => setEngineType("three")}
+              >
+                THREE.JS (R3F)
+              </button>
+              <button
+                className={`pill-btn ${engineType === "babylon" ? "active" : ""}`}
+                onClick={() => setEngineType("babylon")}
+              >
+                BABYLON.JS (HAVOK)
+              </button>
+            </div>
           </div>
 
           {/* Session Mode Selector */}

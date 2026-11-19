@@ -4,6 +4,7 @@ import React, { useMemo } from "react";
 import { TelemetryData } from "@/lib/physics/VehiclePhysics";
 import { AICarState } from "@/lib/ai/AIDriver";
 import { Track } from "@/data/tracks";
+import { CommentaryState } from "@/lib/commentary/RaceCommentary";
 
 interface RacingHUDProps {
   telemetry: TelemetryData;
@@ -17,6 +18,9 @@ interface RacingHUDProps {
   isAudioMuted: boolean;
   onToggleAudio: () => void;
   countdown: number | null; // 3, 2, 1, 0 (GO), or null
+  commentaryState?: CommentaryState;
+  isCommentaryMuted?: boolean;
+  onToggleCommentary?: () => void;
 }
 
 export function RacingHUD({
@@ -30,18 +34,22 @@ export function RacingHUD({
   onPause,
   isAudioMuted,
   onToggleAudio,
-  countdown
+  countdown,
+  commentaryState,
+  isCommentaryMuted,
+  onToggleCommentary
 }: RacingHUDProps) {
-  // Sort positions (P1, P2, P3...) based on lap and t-coordinate
+  // Sort positions (P1, P2, P3...) based on actual track progress (lap + currentT)
   const leaderboard = useMemo(() => {
+    const playerProgress = playerLap + (Number.isFinite(telemetry.currentT) ? telemetry.currentT : 0);
+
     const list = [
       {
         id: "player",
         name: "YOU",
         number: 1,
         lap: playerLap,
-        t: telemetry.lapTime > 0 ? telemetry.currentSector : 0,
-        score: playerLap * 10 + (telemetry.speedMs > 0 ? 1 : 0),
+        progress: playerProgress,
         isPlayer: true
       },
       ...aiCars.map((ai) => ({
@@ -49,25 +57,25 @@ export function RacingHUD({
         name: ai.name,
         number: ai.number,
         lap: ai.lap,
-        t: ai.t,
-        score: ai.lap * 10 + ai.t * 8,
+        progress: ai.lap + ai.t,
         isPlayer: false
       }))
     ];
 
-    list.sort((a, b) => b.score - a.score);
+    list.sort((a, b) => b.progress - a.progress);
     return list;
-  }, [playerLap, telemetry, aiCars]);
+  }, [playerLap, telemetry.currentT, aiCars]);
 
   const playerPos = leaderboard.findIndex((item) => item.isPlayer) + 1;
+  const leaderProgress = leaderboard[0]?.progress ?? 0;
 
   // Defensively guarded display values
   const displaySpeed = Number.isFinite(telemetry.speedKmh) ? telemetry.speedKmh : 0;
   const displayRpm = Number.isFinite(telemetry.rpm) ? telemetry.rpm : 4000;
   const displayBrakeTemp = Number.isFinite(telemetry.brakeTemp) ? telemetry.brakeTemp : 100;
-  const displayGear = Number.isFinite(telemetry.gear)
-    ? (telemetry.speedMs < -0.1 ? "R" : telemetry.gear)
-    : 1;
+  const displayGear = telemetry.gear === -1 || telemetry.isReverse || telemetry.speedMs < -0.2
+    ? "R"
+    : (telemetry.gear || 1);
   const displayLatG = Number.isFinite(telemetry.gForceLat) ? telemetry.gForceLat : 0;
   const displayLongG = Number.isFinite(telemetry.gForceLong) ? telemetry.gForceLong : 0;
 
@@ -135,21 +143,38 @@ export function RacingHUD({
           <span>DRIVER</span>
           <span>GAP</span>
         </div>
-        {leaderboard.map((item, idx) => (
-          <div
-            key={item.id}
-            className={`tower-row ${item.isPlayer ? "player-row" : ""}`}
-          >
-            <span className="pos">P{idx + 1}</span>
-            <span className="driver-name">
-              <span className="driver-num">#{item.number}</span> {item.name}
-            </span>
-            <span className="gap">
-              {idx === 0 ? "LEADER" : `+${(idx * 0.485).toFixed(3)}s`}
-            </span>
-          </div>
-        ))}
+        {leaderboard.map((item, idx) => {
+          const gapProgress = Math.max(0, leaderProgress - item.progress);
+          const gapSecs = (gapProgress * 85.0).toFixed(3);
+          return (
+            <div
+              key={item.id}
+              className={`tower-row ${item.isPlayer ? "player-row" : ""}`}
+            >
+              <span className="pos">P{idx + 1}</span>
+              <span className="driver-name">
+                <span className="driver-num">#{item.number}</span> {item.name}
+              </span>
+              <span className="gap">
+                {idx === 0 ? "LEADER" : `+${gapSecs}s`}
+              </span>
+            </div>
+          );
+        })}
       </div>
+
+      {/* Broadcast Commentary Banner */}
+      {commentaryState?.latestMessage && (
+        <div className="commentary-banner">
+          <div className="commentary-badge">
+            <span className="dot" />
+            <span>COMM: {commentaryState.latestMessage.category}</span>
+          </div>
+          <div className="commentary-text">
+            &ldquo;{commentaryState.latestMessage.text}&rdquo;
+          </div>
+        </div>
+      )}
 
       {/* Center Dynamic Tachometer, RPM Bar, Speedometer & Gear */}
       <div className="tachometer-center">
@@ -171,7 +196,7 @@ export function RacingHUD({
         </div>
 
         <div className="speed-gear-cluster">
-          <div className="gear-display">
+          <div className={`gear-display ${telemetry.isShifting ? "shifting" : ""}`}>
             <span className="label">GEAR</span>
             <span className="value">{displayGear}</span>
           </div>
@@ -185,7 +210,9 @@ export function RacingHUD({
             <span className={`drs-indicator ${telemetry.drsActive ? "active" : telemetry.drsAvailable ? "available" : ""}`}>
               DRS
             </span>
-            <span className="rpm-text">{displayRpm} RPM</span>
+            <span className={`rpm-text ${displayRpm > 11800 ? "rpm-redline" : ""}`}>
+              {displayRpm} RPM
+            </span>
           </div>
         </div>
       </div>
@@ -226,14 +253,23 @@ export function RacingHUD({
           </div>
         </div>
 
-        {/* Action Buttons: Camera Switch, Sound, Pause */}
+        {/* Action Buttons: Camera Switch, Engine Sound, Commentary, Pause */}
         <div className="hud-actions">
           <button className="action-btn" onClick={onToggleCamera} title="Toggle Camera (C)">
             CAM: {cameraMode.toUpperCase()}
           </button>
-          <button className="action-btn" onClick={onToggleAudio} title="Mute/Unmute Audio (M)">
-            {isAudioMuted ? "SOUND: OFF" : "SOUND: ON"}
+          <button className="action-btn" onClick={onToggleAudio} title="Mute/Unmute Engine Audio (M)">
+            {isAudioMuted ? "ENGINE: OFF" : "ENGINE: ON"}
           </button>
+          {onToggleCommentary && (
+            <button
+              className={`action-btn ${!isCommentaryMuted ? "comm-active" : ""}`}
+              onClick={onToggleCommentary}
+              title="Toggle English Race Commentary"
+            >
+              {isCommentaryMuted ? "COMM: OFF" : "COMM: ON"}
+            </button>
+          )}
           <button className="action-btn pause-btn" onClick={onPause}>
             PAUSE
           </button>

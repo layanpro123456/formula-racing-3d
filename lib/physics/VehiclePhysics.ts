@@ -98,6 +98,12 @@ export class VehiclePhysics {
   private _splineTangent = new Vector3(0, 0, 1);
   private _splineNormal = new Vector3(1, 0, 0);
 
+  // Automatic Transmission state
+  public shiftCooldown: number = 0;
+  public shiftCutTimer: number = 0;
+  public isShifting: boolean = false;
+  public onGearShift?: (newGear: number, oldGear: number) => void;
+
   // Reusable telemetry output object (zero allocations)
   private _telemetryData: TelemetryData = {
     speedKmh: 0,
@@ -105,6 +111,9 @@ export class VehiclePhysics {
     gear: 1,
     rpm: 4000,
     rpmRatio: 0,
+    currentT: 0,
+    isReverse: false,
+    isShifting: false,
     lapTime: 0,
     currentSector: 1,
     lastSectorTime: 0,
@@ -127,8 +136,10 @@ export class VehiclePhysics {
   private readonly trackWidth = 1.6;    // Axle track width (m)
   private readonly g = 9.81;
 
-  // Gear ratios (8 forward gears)
-  private readonly gearMaxSpeeds = [0, 22, 35, 48, 62, 74, 84, 93, 102]; // m/s (up to ~365 km/h)
+  // Calibrated gear max speeds (m/s) at ~12,200 RPM
+  private readonly gearMaxSpeeds = [0, 27, 38, 49, 61, 73, 83, 92, 102];
+  // Calibrated base acceleration per gear (m/s²)
+  private readonly gearBaseAccel = [0, 18.2, 14.8, 12.5, 10.5, 8.8, 7.4, 6.2, 5.2];
 
   public reset(startPos: Vector3, startHeading: number) {
     this.position.copyFrom(startPos);
@@ -141,6 +152,9 @@ export class VehiclePhysics {
     this.steerAngle = 0;
     this.gear = 1;
     this.rpm = 4000;
+    this.shiftCooldown = 0;
+    this.shiftCutTimer = 0;
+    this.isShifting = false;
     this.pitch = 0;
     this.roll = 0;
     this.gForceLat = 0;
@@ -210,6 +224,7 @@ export class VehiclePhysics {
     const dragCoeff = this.drsActive ? 0.28 : 0.44;
     const downforceCoeff = this.drsActive ? 0.62 : 1.28;
     const dragForce = 0.5 * 1.225 * dragCoeff * (this.speed * this.speed);
+    const dragDecel = dragForce / this.mass;
     const downforce = 0.5 * 1.225 * downforceCoeff * (this.speed * this.speed);
 
     // 5. Dynamic Weight Load Transfer
@@ -234,17 +249,24 @@ export class VehiclePhysics {
         // Oppose reverse motion with braking to bring car to rest
         brakeForce = 25 * frictionMu;
       } else {
-        const gearMax = this.gearMaxSpeeds[this.gear] || 95;
-        const safeSpeedRatio = Math.max(0, Math.min(1, Math.max(0, this.speed) / gearMax));
-        const powerCurve = Math.max(0, 1.0 - Math.pow(safeSpeedRatio, 1.35));
-        accelForce = (33 - this.gear * 2.1) * powerCurve * frictionMu * throttle;
+        if (this.shiftCutTimer > 0) {
+          // Ignition cut during upshift
+          accelForce = 0;
+        } else {
+          const gIndex = Math.max(1, Math.min(8, this.gear));
+          const baseAccel = this.gearBaseAccel[gIndex];
+          // Realistic internal combustion torque plateau across 4000 to 12200 RPM
+          const rpmNorm = clamp((this.rpm - 4000) / (12200 - 4000), 0, 1);
+          const torqueFactor = 0.82 + 0.18 * Math.sin(rpmNorm * Math.PI);
+          accelForce = baseAccel * torqueFactor * frictionMu * throttle;
+        }
       }
     }
 
     if (brake > 0.01) {
       if (this.speed > 0.5) {
         // High downforce allows massive 5G braking at top speed
-        const maxBrakingDecel = (46 + downforce * 0.038) * frictionMu;
+        const maxBrakingDecel = (32 + (downforce / this.mass)) * frictionMu;
         brakeForce = maxBrakingDecel * brake;
 
         // Inside front lockup detection under heavy trail braking
@@ -270,12 +292,13 @@ export class VehiclePhysics {
     this.brakeTemp = Math.max(100, lerp(this.brakeTemp, 100, safeDt * coolingRate));
 
     // Rolling resistance & Net longitudinal acceleration
+    const rollingResist = 0.8 + (Math.max(0, this.speed) * 0.008);
     let netLongitudinalAccel = 0;
     if (this.speed > 0.05) {
-      const resistance = brakeForce + dragForce * 0.018 + 5.8;
+      const resistance = brakeForce + dragDecel + rollingResist;
       netLongitudinalAccel = accelForce - resistance;
     } else if (this.speed < -0.05) {
-      const resistance = brakeForce + dragForce * 0.018 + 5.8;
+      const resistance = brakeForce + dragDecel + rollingResist;
       netLongitudinalAccel = accelForce + resistance;
     } else {
       if (throttle > 0.01 || brake > 0.01) {
@@ -335,8 +358,8 @@ export class VehiclePhysics {
     // 11. Non-Radial Barrier Collision Resolution
     this.resolveBarrierCollisions(track, safeDt);
 
-    // 12. Gear & RPM Calculation
-    this.updateGearsAndRPM();
+    // 12. Gear & RPM Calculation (Automatic Transmission with stateful shift logic)
+    this.updateGearsAndRPM(safeDt, throttle, brake);
 
     // 13. Visual Suspension Roll, Pitch & 4-Wheel Deflections
     this.pitch = lerp(this.pitch, -this.gForceLong * 0.038, safeDt * 10);
@@ -360,6 +383,9 @@ export class VehiclePhysics {
     this._telemetryData.gear = Number.isFinite(this.gear) ? this.gear : 1;
     this._telemetryData.rpm = Math.round(safeRpmVal);
     this._telemetryData.rpmRatio = clamp((safeRpmVal - 4000) / (12500 - 4000), 0, 1);
+    this._telemetryData.currentT = Number.isFinite(this.currentT) ? this.currentT : 0;
+    this._telemetryData.isReverse = this.gear === -1 || safeSpeedVal < -0.2;
+    this._telemetryData.isShifting = this.isShifting;
     this._telemetryData.lapTime = Number.isFinite(this.lapTime) ? this.lapTime : 0;
     this._telemetryData.currentSector = this.currentSector;
     this._telemetryData.lastSectorTime = this.lastSectorTime;
@@ -467,23 +493,110 @@ export class VehiclePhysics {
     }
   }
 
-  private updateGearsAndRPM() {
-    if (!Number.isFinite(this.speed) || this.speed <= 0.1) {
-      this.gear = 1;
-      this.rpm = 4000;
+  private updateGearsAndRPM(dt: number, throttle: number, brake: number) {
+    if (this.shiftCooldown > 0) {
+      this.shiftCooldown = Math.max(0, this.shiftCooldown - dt);
+    }
+    if (this.shiftCutTimer > 0) {
+      this.shiftCutTimer = Math.max(0, this.shiftCutTimer - dt);
+    }
+    this.isShifting = this.shiftCutTimer > 0;
+
+    const safeSpeed = this.speed;
+
+    // 1. Reverse gear detection
+    if (safeSpeed < -0.2) {
+      this.gear = -1;
+      const revRatio = clamp(Math.abs(safeSpeed) / 14, 0, 1);
+      this.rpm = 4000 + revRatio * 5200;
       return;
     }
 
-    const safeSpeed = Math.max(0, this.speed);
-    this.gear = 1;
-    for (let g = 1; g <= 8; g++) {
-      if (safeSpeed < this.gearMaxSpeeds[g] || g === 8) {
-        this.gear = g;
-        const prevGearSpeed = this.gearMaxSpeeds[g - 1] || 0;
-        const gearSpan = Math.max(1, this.gearMaxSpeeds[g] - prevGearSpeed);
-        const speedInGear = (safeSpeed - prevGearSpeed) / gearSpan;
-        this.rpm = Math.min(12500, Math.max(4000, 4200 + speedInGear * (12000 - 4200)));
-        break;
+    // 2. Stationary / Standstill (clutch disengaged at idle RPM)
+    if (Math.abs(safeSpeed) < 0.4) {
+      this.gear = 1;
+      this.rpm = 4000 + throttle * 2800;
+      return;
+    }
+
+    // 3. Compute continuous RPM for current gear
+    const currentMax = this.gearMaxSpeeds[this.gear] || 27;
+    const speedRatioInGear = safeSpeed / currentMax;
+
+    if (this.gear === 1) {
+      // Gear 1 has launch clutch slip up to ~7 m/s
+      const launchSlip = clamp(safeSpeed / 7, 0, 1);
+      const targetRpm = 4000 + (throttle > 0.1 ? 2000 : 0) + (12200 - 6000) * launchSlip * (safeSpeed / 27);
+      this.rpm = clamp(targetRpm, 4000, 12500);
+    } else {
+      // Gears 2-8: RPM is directly proportional to road speed
+      const nominalRpm = speedRatioInGear * 12200;
+      this.rpm = clamp(nominalRpm, 3800, 12500);
+    }
+
+    // Hold RPM if currently in shift cut
+    if (this.shiftCutTimer > 0) {
+      return;
+    }
+
+    // 4. Automatic Upshift Decision
+    // Upshift when RPM exceeds threshold or speed approaches gear ceiling under throttle
+    if (this.shiftCooldown <= 0 && this.gear >= 1 && this.gear < 8) {
+      const upshiftThresholdRpm = 11800;
+      const speedThreshold = this.gearMaxSpeeds[this.gear] * 0.94;
+
+      if ((this.rpm >= upshiftThresholdRpm || safeSpeed >= speedThreshold) && throttle > 0.15) {
+        const oldGear = this.gear;
+        this.gear++;
+        this.shiftCooldown = 0.28;
+        this.shiftCutTimer = 0.08;
+        this.isShifting = true;
+
+        // Calculate natural RPM drop in the higher gear
+        const newMax = this.gearMaxSpeeds[this.gear];
+        this.rpm = clamp((safeSpeed / newMax) * 12200, 4200, 11400);
+
+        if (this.onGearShift) {
+          this.onGearShift(this.gear, oldGear);
+        }
+        return;
+      }
+    }
+
+    // 5. Automatic Downshift Decision
+    // Downshift when RPM drops too low or during braking to maintain engine responsiveness
+    if (this.shiftCooldown <= 0 && this.gear > 1) {
+      const lowerGear = this.gear - 1;
+      const lowerMax = this.gearMaxSpeeds[lowerGear];
+      const predictedLowerRpm = (safeSpeed / lowerMax) * 12200;
+
+      // Redline protection: NEVER downshift if the lower gear would over-rev past 11,400 RPM
+      if (predictedLowerRpm < 11400) {
+        let shouldDownshift = false;
+
+        if (brake > 0.1) {
+          // Aggressive downshift under braking for corner entry
+          if (this.rpm < 8200 || safeSpeed < lowerMax * 0.90) {
+            shouldDownshift = true;
+          }
+        } else {
+          // Normal cruising / coasting downshift (downshift when RPM drops below 5,200 RPM)
+          if (this.rpm < 5200 || safeSpeed < lowerMax * 0.74) {
+            shouldDownshift = true;
+          }
+        }
+
+        if (shouldDownshift) {
+          const oldGear = this.gear;
+          this.gear--;
+          this.shiftCooldown = 0.22;
+          // Rev-match blip on downshift
+          this.rpm = clamp(predictedLowerRpm, 4200, 11200);
+
+          if (this.onGearShift) {
+            this.onGearShift(this.gear, oldGear);
+          }
+        }
       }
     }
   }

@@ -14,6 +14,7 @@ const { Spline3D } = require("../lib/math/Spline3D");
 const { VehiclePhysics } = require("../lib/physics/VehiclePhysics");
 const { AISimulator } = require("../lib/ai/AIDriver");
 const { InputManager } = require("../lib/input/InputManager");
+const { RaceCommentary } = require("../lib/commentary/RaceCommentary");
 const { Vector3 } = require("@babylonjs/core");
 
 const PORT = 3008;
@@ -221,7 +222,220 @@ runTest("AI Simulator Arc-Length Progression across Tracks", () => {
 });
 
 // -----------------------------------------------------------------------------
-// 6. Playwright End-to-End Browser Test
+// 6. Automatic Gearbox: Full Throttle Acceleration Gears 1-8 & Downshifting
+// -----------------------------------------------------------------------------
+const straightTestTrack = {
+  id: "straight-test",
+  name: "Straight Test Strip",
+  officialName: "Straight Acceleration Strip",
+  location: "Proving Ground",
+  country: "Italy",
+  length: "5.0 km",
+  turns: 0,
+  color: "#2a9d8f",
+  skyColor: "#9ec5e8",
+  groundColor: "#2f4f34",
+  width: 15,
+  points: [
+    [0, 0, 0],
+    [0, 0, 500],
+    [0, 0, 1000],
+    [0, 0, 1500],
+    [0, 0, 2000],
+    [0, 0, 2500],
+    [0, 0, 3000],
+    [0, 0, 3500],
+    [0, 0, 4000],
+    [0, 0, 4500],
+    [0, 0, 5000]
+  ],
+  sectors: [
+    { id: 1, name: "Sector 1", tEnd: 0.33 },
+    { id: 2, name: "Sector 2", tEnd: 0.67 },
+    { id: 3, name: "Sector 3", tEnd: 1.0 }
+  ],
+  drsZones: [{ start: 0, end: 1 }],
+  lapsDefault: 3
+};
+
+runTest("Automatic Gearbox: Gears 1 through 8 Progression", () => {
+  const spline = new Spline3D(straightTestTrack.points, 1.0);
+  const physics = new VehiclePhysics();
+
+  const startPt = spline.getPointAt(0);
+  const startTan = spline.getTangentAt(0);
+  const startHeading = Math.atan2(startTan.x, startTan.z);
+  physics.reset(startPt, startHeading);
+
+  const reachedGears = new Set([1]);
+  let rpmDropObserved = false;
+  let prevRpm = 4000;
+
+  physics.onGearShift = (newG, oldG) => {
+    reachedGears.add(newG);
+    if (newG > oldG) {
+      if (prevRpm > 10500) {
+        rpmDropObserved = true;
+      }
+    }
+  };
+
+  const dt = 1.0 / 60.0;
+  // Accelerate for 24 seconds at 60 FPS down straight
+  for (let step = 0; step < 60 * 24; step++) {
+    prevRpm = physics.rpm;
+    const tData = physics.update(dt, { throttle: 1.0, brake: 0, steer: 0, drs: true }, straightTestTrack, spline);
+
+    assert(Number.isFinite(tData.speedMs), `Speed became NaN at step ${step}`);
+    assert(Number.isFinite(tData.rpm), `RPM became NaN at step ${step}`);
+    assert(tData.rpm >= 3800 && tData.rpm <= 12600, `RPM out of range: ${tData.rpm}`);
+  }
+
+  // Verify all 8 forward gears were reached
+  for (let g = 1; g <= 8; g++) {
+    assert(reachedGears.has(g), `Gear ${g} was not reached! Reached: ${[...reachedGears].join(", ")}`);
+  }
+
+  assert(rpmDropObserved, "RPM drop on upshift was not observed");
+  assert(physics.speed > 85, `Expected top speed > 85 m/s (>306 km/h) in gear 8, got ${physics.speed}`);
+  assert.strictEqual(physics.gear, 8, `Expected gear 8 at top speed, got ${physics.gear}`);
+});
+
+runTest("Automatic Gearbox: Downshifting under Braking", () => {
+  const spline = new Spline3D(straightTestTrack.points, 1.0);
+  const physics = new VehiclePhysics();
+
+  physics.reset(spline.getPointAt(0), 0);
+
+  // Bring car to speed in high gear
+  const dt = 1.0 / 60.0;
+  for (let step = 0; step < 60 * 18; step++) {
+    physics.update(dt, { throttle: 1.0, brake: 0, steer: 0, drs: true }, straightTestTrack, spline);
+  }
+  assert(physics.gear >= 7, `Expected high gear before braking, got ${physics.gear}`);
+
+  // Apply heavy braking
+  const downshiftedGears = new Set([physics.gear]);
+  physics.onGearShift = (newG, oldG) => {
+    downshiftedGears.add(newG);
+  };
+
+  for (let step = 0; step < 60 * 6; step++) {
+    const brakeInput = physics.speed > 0.2 ? 1.0 : 0;
+    const tData = physics.update(dt, { throttle: 0, brake: brakeInput, steer: 0 }, straightTestTrack, spline);
+    assert(Number.isFinite(tData.speedMs), `NaN speed during braking step ${step}`);
+    assert(tData.rpm <= 12500, `Redline exceeded during downshift: ${tData.rpm}`);
+  }
+
+  // Car should be stopped and in gear 1
+  assert(physics.speed <= 0.5, `Car should be stopped, got speed: ${physics.speed}`);
+  assert.strictEqual(physics.gear, 1, `Car should be in gear 1 when stopped, got ${physics.gear}`);
+  assert(downshiftedGears.has(1), "Downshift to gear 1 was not recorded");
+  assert(downshiftedGears.has(2), "Downshift to gear 2 was not recorded");
+});
+
+runTest("Automatic Gearbox: Reverse and Stationary Behavior", () => {
+  const spline = new Spline3D(straightTestTrack.points, 1.0);
+  const physics = new VehiclePhysics();
+
+  physics.reset(spline.getPointAt(0), 0);
+  const dt = 0.016;
+
+  // At standstill with no inputs
+  let tData = physics.update(dt, { throttle: 0, brake: 0, steer: 0 }, straightTestTrack, spline);
+  assert.strictEqual(tData.gear, 1, "Standstill must be in gear 1");
+  assert.strictEqual(tData.isReverse, false);
+
+  // Apply brake at standstill -> reverse
+  for (let i = 0; i < 40; i++) {
+    tData = physics.update(dt, { throttle: 0, brake: 1.0, steer: 0 }, straightTestTrack, spline);
+  }
+  assert(physics.speed < 0, `Expected negative speed in reverse, got ${physics.speed}`);
+  assert.strictEqual(tData.gear, -1, `Expected reverse gear (-1), got ${tData.gear}`);
+  assert.strictEqual(tData.isReverse, true);
+
+  // Apply throttle -> pull forward into gear 1
+  for (let i = 0; i < 60; i++) {
+    tData = physics.update(dt, { throttle: 1.0, brake: 0, steer: 0 }, straightTestTrack, spline);
+  }
+  assert(physics.speed > 5, `Expected forward motion, got ${physics.speed}`);
+  assert(tData.gear >= 1, `Expected gear 1+, got ${tData.gear}`);
+  assert.strictEqual(tData.isReverse, false);
+});
+
+runTest("Automatic Gearbox: Multi-framerate Shift Stability (30, 60, 120 FPS)", () => {
+  const spline = new Spline3D(straightTestTrack.points, 1.0);
+
+  [30, 60, 120].forEach((fps) => {
+    const physics = new VehiclePhysics();
+    physics.reset(spline.getPointAt(0), 0);
+    const dt = 1.0 / fps;
+
+    for (let step = 0; step < fps * 15; step++) {
+      physics.update(dt, { throttle: 1.0, brake: 0, steer: 0, drs: true }, straightTestTrack, spline);
+    }
+
+    assert(physics.gear >= 6, `Expected gear >= 6 after 15s at ${fps} FPS, got ${physics.gear}`);
+    assert(physics.speed > 60, `Expected speed > 60 m/s at ${fps} FPS, got ${physics.speed}`);
+  });
+});
+
+// -----------------------------------------------------------------------------
+// 7. English Race Commentary Engine Tests
+// -----------------------------------------------------------------------------
+runTest("Race Commentary: Events, Priorities, and Transitions", () => {
+  const commentary = new RaceCommentary();
+  let latestUpdate = null;
+  commentary.onUpdate = (st) => {
+    latestUpdate = st;
+  };
+
+  // Test Race Start
+  commentary.update(0, 1, 3, 1, 6, false, false, false, false, 0, false, 0);
+  assert(latestUpdate !== null, "Commentary should produce state update on start");
+  assert.strictEqual(latestUpdate.latestMessage.category, "START");
+
+  // Test Overtake (P6 -> P4)
+  commentary.update(null, 1, 3, 1, 4, false, false, false, false, 10, false, 30);
+  assert.strictEqual(latestUpdate.latestMessage.category, "OVERTAKE");
+  assert(latestUpdate.latestMessage.text.includes("P4"));
+
+  // Test Sector Split (S1 -> S2)
+  commentary.update(null, 1, 3, 2, 4, false, false, false, false, 25, false, 45);
+  assert.strictEqual(latestUpdate.latestMessage.category, "SECTOR");
+
+  // Test DRS Available
+  commentary.update(null, 1, 3, 2, 4, false, false, true, false, 35, false, 55);
+  assert.strictEqual(latestUpdate.latestMessage.category, "DRS");
+
+  // Test Off-Track Warning
+  commentary.update(null, 1, 3, 2, 4, true, false, true, false, 40, false, 40);
+  assert.strictEqual(latestUpdate.latestMessage.category, "WARNING");
+
+  // Test Track Limits Recovery
+  commentary.update(null, 1, 3, 2, 4, false, false, true, false, 45, false, 42);
+  assert.strictEqual(latestUpdate.latestMessage.category, "LIMITS");
+
+  // Test Final Lap
+  commentary.update(null, 3, 3, 1, 2, false, false, false, false, 90, false, 50);
+  assert.strictEqual(latestUpdate.latestMessage.category, "LAP");
+
+  // Test Race Finish
+  commentary.update(null, 3, 3, 3, 1, false, false, false, false, 120, true, 20);
+  assert.strictEqual(latestUpdate.latestMessage.category, "FINISH");
+
+  // Test Mute / Unmute
+  assert.strictEqual(commentary.getIsEnabled(), true);
+  commentary.toggleMute();
+  assert.strictEqual(commentary.getIsEnabled(), false);
+  commentary.toggleMute();
+  assert.strictEqual(commentary.getIsEnabled(), true);
+
+  commentary.dispose();
+});
+
+// -----------------------------------------------------------------------------
+// 8. Playwright End-to-End Browser Test
 // -----------------------------------------------------------------------------
 function getMime(filePath) {
   const ext = path.extname(filePath).toLowerCase();

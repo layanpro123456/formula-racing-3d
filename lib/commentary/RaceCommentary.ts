@@ -48,6 +48,7 @@ export class RaceCommentary {
   private lastCategoryTime: Record<string, number> = {};
 
   // Tracked states for transition detection
+  private hasAnnouncedStart: boolean = false;
   private prevCountdown: number | null = null;
   private prevSector: number = 1;
   private prevLap: number = 1;
@@ -139,7 +140,8 @@ export class RaceCommentary {
     const now = Date.now();
 
     // 1. Race Start
-    if (this.prevCountdown !== null && countdown === 0 && this.prevCountdown > 0) {
+    if (!this.hasAnnouncedStart && (countdown === 0 || (this.prevCountdown !== null && this.prevCountdown > 0 && countdown === 0))) {
+      this.hasAnnouncedStart = true;
       const startPhrases = [
         "And we're racing! Fantastic launch from the grid!",
         "Lights out and away we go! The race is underway!",

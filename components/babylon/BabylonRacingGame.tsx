@@ -27,6 +27,7 @@ import { RacingHUD } from "@/components/RacingHUD";
 import { InputManager } from "@/lib/input/InputManager";
 import { TireSmokeSystem } from "@/lib/effects/TireSmokeSystem";
 import { BarrierSparkSystem } from "@/lib/effects/BarrierSparkSystem";
+import { raceCommentary, CommentaryState } from "@/lib/commentary/RaceCommentary";
 
 type CameraMode = "chase" | "cockpit" | "nose";
 
@@ -43,6 +44,9 @@ const defaultTelemetry: TelemetryData = {
   gear: 1,
   rpm: 4000,
   rpmRatio: 0,
+  currentT: 0,
+  isReverse: false,
+  isShifting: false,
   lapTime: 0,
   currentSector: 1,
   lastSectorTime: 0,
@@ -70,6 +74,8 @@ export default function BabylonRacingGame({
   const [totalLaps, setTotalLaps] = useState(sessionMode === "qualifying" ? 1 : track.lapsDefault);
   const [cameraMode, setCameraMode] = useState<CameraMode>("chase");
   const [isAudioMuted, setIsAudioMuted] = useState(false);
+  const [commentaryState, setCommentaryState] = useState<CommentaryState>(raceCommentary.getState());
+  const [isCommentaryMuted, setIsCommentaryMuted] = useState(!raceCommentary.getIsEnabled());
   const [countdown, setCountdown] = useState<number | null>(sessionMode === "grandprix" ? 3 : null);
   const countdownRef = useRef<number | null>(sessionMode === "grandprix" ? 3 : null);
   const [isPaused, setIsPaused] = useState(false);
@@ -80,6 +86,7 @@ export default function BabylonRacingGame({
   const isPausedRef = useRef<boolean>(false);
   const isFinishedRef = useRef<boolean>(false);
   const lastTelemetryTimeRef = useRef<number>(0);
+  const playerLapRef = useRef<number>(1);
 
   const physicsRef = useRef(new VehiclePhysics());
   const aiSim = useMemo(() => new AISimulator(), []);
@@ -88,7 +95,7 @@ export default function BabylonRacingGame({
 
   const spline = useMemo(() => build3DCurve(track.points), [track]);
 
-  // Actions for camera, pause, and mute
+  // Actions for camera, pause, mute, and commentary
   const handleToggleCamera = useCallback(() => {
     setCameraMode((prev) => {
       const next: CameraMode = prev === "chase" ? "cockpit" : prev === "cockpit" ? "nose" : "chase";
@@ -101,6 +108,11 @@ export default function BabylonRacingGame({
     setIsPaused((prev) => {
       const next = !prev;
       isPausedRef.current = next;
+      if (next) {
+        raceCommentary.pause();
+      } else {
+        raceCommentary.resume();
+      }
       return next;
     });
   }, []);
@@ -108,6 +120,22 @@ export default function BabylonRacingGame({
   const handleToggleAudio = useCallback(() => {
     const m = engineAudio.toggleMute();
     setIsAudioMuted(m);
+  }, []);
+
+  const handleToggleCommentary = useCallback(() => {
+    const enabled = raceCommentary.toggleMute();
+    setIsCommentaryMuted(!enabled);
+  }, []);
+
+  // Connect Commentary listener
+  useEffect(() => {
+    raceCommentary.onUpdate = (state) => {
+      setCommentaryState({ ...state });
+      setIsCommentaryMuted(!state.isEnabled);
+    };
+    return () => {
+      raceCommentary.dispose();
+    };
   }, []);
 
   // Connect InputManager callbacks
@@ -269,6 +297,11 @@ export default function BabylonRacingGame({
         startHeading
       );
 
+      // Connect physical automatic gearbox shift transitions to engine shift cut sound
+      physicsRef.current.onGearShift = () => {
+        engineAudio.playGearShift();
+      };
+
       // Initialize AI Grid
       if (sessionMode === "grandprix") {
         aiSim.initializeGrid(track, spline);
@@ -388,9 +421,12 @@ export default function BabylonRacingGame({
                 setIsFinished(true);
                 isFinishedRef.current = true;
                 engineAudio.stop();
+                raceCommentary.clearQueue();
                 return curr;
               }
-              return curr + 1;
+              const nextLap = curr + 1;
+              playerLapRef.current = nextLap;
+              return nextLap;
             });
             physicsRef.current.lapTime = 0;
           }
@@ -409,6 +445,32 @@ export default function BabylonRacingGame({
               }
             }
           }
+
+          // Calculate verified player position against AI fleet
+          let playerPos = 1;
+          const playerProgress = playerLapRef.current + (Number.isFinite(tData.currentT) ? tData.currentT : 0);
+          for (let i = 0; i < aiSim.cars.length; i++) {
+            const aiCar = aiSim.cars[i];
+            if (aiCar && (aiCar.lap + aiCar.t) > playerProgress) {
+              playerPos++;
+            }
+          }
+
+          // English Race Commentary Evaluation
+          raceCommentary.update(
+            countdownRef.current,
+            playerLapRef.current,
+            totalLaps,
+            tData.currentSector,
+            playerPos,
+            tData.offTrack,
+            tData.isLockup,
+            tData.drsAvailable,
+            tData.drsActive,
+            tData.lapTime,
+            isFinishedRef.current,
+            tData.speedMs
+          );
 
           // Throttled HUD Telemetry (Publish at ~13 Hz instead of 60 Hz)
           const now = performance.now();
@@ -493,6 +555,9 @@ export default function BabylonRacingGame({
         isAudioMuted={isAudioMuted}
         onToggleAudio={handleToggleAudio}
         countdown={countdown}
+        commentaryState={commentaryState}
+        isCommentaryMuted={isCommentaryMuted}
+        onToggleCommentary={handleToggleCommentary}
       />
 
       {/* Paused Modal */}

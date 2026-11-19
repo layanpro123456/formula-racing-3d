@@ -52,6 +52,14 @@ export class BabylonVehicle {
     accentMat.metallic = 0.55;
     accentMat.roughness = 0.25;
 
+    const secondaryMat = new PBRMaterial(`${name}_secondaryMat`, scene);
+    secondaryMat.albedoColor = Color3.FromHexString(livery.secondary);
+    secondaryMat.metallic = 0.55;
+    secondaryMat.roughness = 0.25;
+    secondaryMat.clearCoat.isEnabled = true;
+    secondaryMat.clearCoat.roughness = 0.08;
+    secondaryMat.clearCoat.intensity = 0.9;
+
     const rubberMat = new PBRMaterial(`${name}_rubberMat`, scene);
     rubberMat.albedoColor = new Color3(0.05, 0.05, 0.06);
     rubberMat.roughness = 0.95;
@@ -77,16 +85,16 @@ export class BabylonVehicle {
     nose.position = new Vector3(0, 0.34, 1.85);
     nose.material = this.bodyMat;
 
-    // Sidepods
+    // Sidepods (Styled with secondary livery color for two-tone design)
     const leftSidepod = MeshBuilder.CreateBox("leftSidepod", { width: 0.44, height: 0.32, depth: 1.6 }, scene);
     leftSidepod.parent = this.root;
     leftSidepod.position = new Vector3(-0.62, 0.34, -0.1);
-    leftSidepod.material = this.bodyMat;
+    leftSidepod.material = secondaryMat;
 
     const rightSidepod = MeshBuilder.CreateBox("rightSidepod", { width: 0.44, height: 0.32, depth: 1.6 }, scene);
     rightSidepod.parent = this.root;
     rightSidepod.position = new Vector3(0.62, 0.34, -0.1);
-    rightSidepod.material = this.bodyMat;
+    rightSidepod.material = secondaryMat;
 
     // Engine Cover Fin
     const fin = MeshBuilder.CreateBox("fin", { width: 0.06, height: 0.38, depth: 1.3 }, scene);

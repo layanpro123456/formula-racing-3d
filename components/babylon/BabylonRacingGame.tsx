@@ -9,11 +9,15 @@ import {
   Color4,
   HemisphericLight,
   DirectionalLight,
-  TargetCamera
+  TargetCamera,
+  ShadowGenerator,
+  GlowLayer
 } from "@babylonjs/core";
+import { DefaultRenderingPipeline } from "@babylonjs/core/PostProcesses/RenderPipeline/Pipelines/defaultRenderingPipeline";
+import { MotionBlurPostProcess } from "@babylonjs/core/PostProcesses/motionBlurPostProcess";
 import { Track } from "@/data/tracks";
 import { build3DCurve, Spline3D } from "@/lib/math/Spline3D";
-import { createBabylonTrack } from "./BabylonTrackGenerator";
+import { createBabylonTrack, createProceduralSkybox } from "./BabylonTrackGenerator";
 import { BabylonVehicle } from "./BabylonVehicle";
 import { getHavokPlugin } from "@/lib/babylon/havokLoader";
 import { VehiclePhysics, TelemetryData } from "@/lib/physics/VehiclePhysics";
@@ -21,6 +25,8 @@ import { AISimulator, AICarState } from "@/lib/ai/AIDriver";
 import { engineAudio } from "@/lib/audio/EngineSound";
 import { RacingHUD } from "@/components/RacingHUD";
 import { InputManager } from "@/lib/input/InputManager";
+import { TireSmokeSystem } from "@/lib/effects/TireSmokeSystem";
+import { BarrierSparkSystem } from "@/lib/effects/BarrierSparkSystem";
 
 type CameraMode = "chase" | "cockpit" | "nose";
 
@@ -155,6 +161,12 @@ export default function BabylonRacingGame({
     let scene: Scene;
     let vehicle: BabylonVehicle;
     const aiVehicles: BabylonVehicle[] = [];
+    let shadowGen: ShadowGenerator | null = null;
+    let glowLayer: GlowLayer | null = null;
+    let pipeline: DefaultRenderingPipeline | null = null;
+    let motionBlur: MotionBlurPostProcess | null = null;
+    let tireSmokeSystem: TireSmokeSystem | null = null;
+    let barrierSparkSystem: BarrierSparkSystem | null = null;
     let isDisposed = false;
     let onResize: (() => void) | null = null;
 
@@ -178,24 +190,74 @@ export default function BabylonRacingGame({
         console.warn("Havok Physics fallback to deterministic kinematics:", e);
       }
 
-      // 3. Lighting
+      // 3. Lighting & Environment
       const ambient = new HemisphericLight("hemiLight", new Vector3(0, 1, 0), scene);
-      ambient.intensity = 0.65;
-      ambient.groundColor = new Color3(0.2, 0.2, 0.2);
+      ambient.intensity = 0.55;
+      ambient.groundColor = new Color3(0.2, 0.22, 0.2);
 
-      const sun = new DirectionalLight("sunLight", new Vector3(-1, -2, -1), scene);
-      sun.position = new Vector3(50, 70, 30);
-      sun.intensity = 1.8;
+      const sun = new DirectionalLight("sunLight", new Vector3(-1, -2, -1).normalize(), scene);
+      sun.position = new Vector3(80, 100, 50);
+      sun.intensity = 2.0;
+
+      // Cascaded Shadow Map for crisp vehicle shadows
+      shadowGen = new ShadowGenerator(1024, sun);
+      shadowGen.usePoissonSampling = true;
+
+      // Atmospheric Fog
+      scene.fogMode = Scene.FOGMODE_EXP2;
+      scene.fogColor = Color3.FromHexString(track.skyColor);
+      scene.fogDensity = 0.0016;
+
+      // Procedural Atmospheric Skybox
+      createProceduralSkybox(scene, track.skyColor);
 
       // 4. Generate Procedural 3D Banked Track using identical Spline3D
       createBabylonTrack(track, spline, scene);
 
       // 5. Build Formula Car Model for Player
       vehicle = new BabylonVehicle("playerF1", liveryIndex, scene);
+      shadowGen.addShadowCaster(vehicle.chassis, true);
+      shadowGen.addShadowCaster(vehicle.wheelFL, false);
+      shadowGen.addShadowCaster(vehicle.wheelFR, false);
+      shadowGen.addShadowCaster(vehicle.wheelRL, false);
+      shadowGen.addShadowCaster(vehicle.wheelRR, false);
 
       // Camera
       const camera = new TargetCamera("mainCam", new Vector3(0, 5, -10), scene);
       camera.fov = 1.1;
+
+      // GlowLayer for emissive brake discs
+      glowLayer = new GlowLayer("brakeGlow", scene, {
+        mainTextureFixedSize: 256,
+        blurKernelSize: 32
+      });
+      glowLayer.intensity = 0.85;
+      for (const disc of vehicle.brakeDiscs) {
+        glowLayer.addIncludedOnlyMesh(disc);
+      }
+
+      // Default Rendering Pipeline (FXAA Antialiasing + Bloom)
+      pipeline = new DefaultRenderingPipeline("defaultPipeline", true, scene, [camera]);
+      pipeline.fxaaEnabled = true;
+      pipeline.samples = 4;
+      pipeline.bloomEnabled = true;
+      pipeline.bloomWeight = 0.22;
+      pipeline.bloomThreshold = 0.82;
+      pipeline.bloomKernel = 48;
+      pipeline.bloomScale = 0.5;
+
+      // Velocity-dependent Motion Blur
+      try {
+        motionBlur = new MotionBlurPostProcess("motionBlur", scene, 1.0, camera);
+        motionBlur.motionStrength = 0;
+        motionBlur.isObjectBased = false;
+      } catch (e) {
+        console.warn("MotionBlur fallback:", e);
+      }
+
+      // Particle Systems (Tire Smoke & Barrier Sparks)
+      tireSmokeSystem = new TireSmokeSystem(scene, [vehicle.wheelRL, vehicle.wheelRR]);
+      barrierSparkSystem = new BarrierSparkSystem(scene, vehicle.chassis);
 
       // Start position from spline
       const startPt = spline.getPointAt(0);
@@ -218,6 +280,9 @@ export default function BabylonRacingGame({
           aiVeh.root.position.copyFrom(aiCar.position);
           aiVeh.root.rotation.y = aiCar.heading;
           aiVehicles.push(aiVeh);
+          if (shadowGen) {
+            shadowGen.addShadowCaster(aiVeh.chassis, true);
+          }
         });
       }
 
@@ -268,6 +333,21 @@ export default function BabylonRacingGame({
             tData.brakeTemp,
             tData.drsActive
           );
+
+          // Update Particle Effects (Smoke & Sparks)
+          if (tireSmokeSystem) {
+            tireSmokeSystem.update(tData.tireSlip, (inputs.brake ?? 0) > 0.1, tData.speedMs);
+          }
+          if (barrierSparkSystem) {
+            const isNearBarrier = physicsRef.current.lateralDistance > (track.width * 0.5 + 3.8);
+            barrierSparkSystem.update(isNearBarrier, tData.speedMs);
+          }
+
+          // Update Motion Blur strength based on velocity
+          if (motionBlur) {
+            const speedRatio = Math.min(1, Math.max(0, (tData.speedMs || 0) / 85));
+            motionBlur.motionStrength = speedRatio * 0.35;
+          }
 
           // Update Camera Position & Target based on mutable cameraModeRef
           const currentCamMode = cameraModeRef.current;
@@ -353,6 +433,24 @@ export default function BabylonRacingGame({
         window.removeEventListener("resize", onResize);
       }
       engineAudio.stop();
+      if (tireSmokeSystem) {
+        tireSmokeSystem.dispose();
+      }
+      if (barrierSparkSystem) {
+        barrierSparkSystem.dispose();
+      }
+      if (motionBlur) {
+        motionBlur.dispose();
+      }
+      if (pipeline) {
+        pipeline.dispose();
+      }
+      if (glowLayer) {
+        glowLayer.dispose();
+      }
+      if (shadowGen) {
+        shadowGen.dispose();
+      }
       if (engine) {
         engine.stopRenderLoop();
       }

@@ -316,6 +316,11 @@ server.listen(PORT, async () => {
     const parsedDrivingSpeed = parseInt(drivingSpeed, 10);
     assert(parsedDrivingSpeed > 20, `Car should accelerate on W, got ${drivingSpeed}`);
 
+    // Capture chase camera view with graphics upgrades
+    const chaseScreenshotPath = "C:/Users/layan/.gemini/antigravity/brain/ccca0f47-d5c4-43d5-89d5-f350a1a8121b/chase_cam_graphics.png";
+    await page.screenshot({ path: chaseScreenshotPath });
+    console.log(`Chase camera graphics screenshot saved to ${chaseScreenshotPath}`);
+
     // 4. Test Camera Switching (Press 'C') -> Should NOT reset car or speed!
     console.log("Testing Camera Toggle (C)...");
     await page.keyboard.press("KeyC");

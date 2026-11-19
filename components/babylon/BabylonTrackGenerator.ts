@@ -133,7 +133,7 @@ export function createBabylonTrack(track: Track, spline: Spline3D, scene: Scene)
   roadMaterial.metallic = 0.1;
   roadMesh.material = roadMaterial;
 
-  // 2. 3D Kerbs
+  // 2. 3D Kerbs with Alternating Red/White Stripes
   const leftKerbMesh = MeshBuilder.CreateRibbon(
     "leftKerb",
     { pathArray: [leftKerbInner, leftKerbOuter], sideOrientation: Mesh.DOUBLESIDE },
@@ -147,8 +147,24 @@ export function createBabylonTrack(track: Track, spline: Spline3D, scene: Scene)
   );
   rightKerbMesh.parent = root;
 
-  const kerbMat = new StandardMaterial("kerbMat", scene);
-  kerbMat.diffuseColor = new Color3(0.94, 0.12, 0.14); // Safety red
+  // Procedural Kerb Stripe Texture (red/white alternating diagonal stripes)
+  const kerbTex = new DynamicTexture("kerbTex", { width: 128, height: 64 }, scene);
+  const kCtx = kerbTex.getContext() as CanvasRenderingContext2D;
+  if (kCtx) {
+    const stripeW = 16;
+    for (let i = 0; i < 8; i++) {
+      kCtx.fillStyle = i % 2 === 0 ? "#e10600" : "#ffffff";
+      kCtx.fillRect(i * stripeW, 0, stripeW, 64);
+    }
+    kerbTex.update();
+    kerbTex.uScale = 1;
+    kerbTex.vScale = 80;
+  }
+
+  const kerbMat = new PBRMaterial("kerbMat", scene);
+  kerbMat.albedoTexture = kerbTex;
+  kerbMat.roughness = 0.72;
+  kerbMat.metallic = 0.05;
   leftKerbMesh.material = kerbMat;
   rightKerbMesh.material = kerbMat;
 
@@ -192,15 +208,103 @@ export function createBabylonTrack(track: Track, spline: Spline3D, scene: Scene)
   leftBarrier.material = barrierMat;
   rightBarrier.material = barrierMat;
 
-  // 5. Surrounding Ground Terrain
-  const ground = MeshBuilder.CreateGround("ground", { width: 1400, height: 1400 }, scene);
+  // 5. Track-side Marshal Posts along barriers
+  const postSpacing = Math.floor(segments / 24);
+  for (let i = 0; i < segments; i += postSpacing) {
+    const lPos = leftBarrierPath[i];
+    const rPos = rightBarrierPath[i];
+
+    if (lPos) {
+      const lPost = MeshBuilder.CreateCylinder(`lPost_${i}`, {
+        diameter: 0.16,
+        height: 2.2,
+        tessellation: 6
+      }, scene);
+      lPost.parent = root;
+      lPost.position = new Vector3(lPos.x, lPos.y + 0.6, lPos.z);
+      lPost.material = barrierMat;
+    }
+    if (rPos) {
+      const rPost = MeshBuilder.CreateCylinder(`rPost_${i}`, {
+        diameter: 0.16,
+        height: 2.2,
+        tessellation: 6
+      }, scene);
+      rPost.parent = root;
+      rPost.position = new Vector3(rPos.x, rPos.y + 0.6, rPos.z);
+      rPost.material = barrierMat;
+    }
+  }
+
+  // 6. Surrounding Ground Terrain with Procedural Grass Texture
+  const ground = MeshBuilder.CreateGround("ground", { width: 1800, height: 1800 }, scene);
   ground.parent = root;
   ground.position.y = -0.35;
   ground.receiveShadows = true;
 
-  const groundMat = new StandardMaterial("groundMat", scene);
-  groundMat.diffuseColor = Color3.FromHexString(track.groundColor);
+  const groundTex = new DynamicTexture("groundTex", { width: 512, height: 512 }, scene);
+  const gCtx = groundTex.getContext() as CanvasRenderingContext2D;
+  if (gCtx) {
+    gCtx.fillStyle = track.groundColor;
+    gCtx.fillRect(0, 0, 512, 512);
+
+    const r = parseInt(track.groundColor.slice(1, 3), 16) || 40;
+    const g = parseInt(track.groundColor.slice(3, 5), 16) || 70;
+    const b = parseInt(track.groundColor.slice(5, 7), 16) || 45;
+    for (let i = 0; i < 16000; i++) {
+      const x = Math.random() * 512;
+      const y = Math.random() * 512;
+      const factor = 0.7 + Math.random() * 0.55;
+      gCtx.fillStyle = `rgb(${Math.floor(r * factor)},${Math.floor(g * factor)},${Math.floor(b * factor)})`;
+      gCtx.fillRect(x, y, 1.5, 2.5);
+    }
+    groundTex.update();
+    groundTex.uScale = 90;
+    groundTex.vScale = 90;
+  }
+
+  const groundMat = new PBRMaterial("groundMat", scene);
+  groundMat.albedoTexture = groundTex;
+  groundMat.roughness = 0.95;
+  groundMat.metallic = 0.0;
   ground.material = groundMat;
 
   return root;
+}
+
+export function createProceduralSkybox(scene: Scene, skyColorHex: string): Mesh {
+  const skybox = MeshBuilder.CreateBox("skyBox", { size: 1000 }, scene);
+  skybox.infiniteDistance = true;
+
+  const skyMat = new StandardMaterial("skyBoxMat", scene);
+  skyMat.backFaceCulling = false;
+  skyMat.disableLighting = true;
+
+  const skyTex = new DynamicTexture("skyTex", { width: 16, height: 256 }, scene);
+  const ctx = skyTex.getContext() as CanvasRenderingContext2D;
+  if (ctx) {
+    const grad = ctx.createLinearGradient(0, 0, 0, 256);
+    const r = parseInt(skyColorHex.slice(1, 3), 16) || 140;
+    const g = parseInt(skyColorHex.slice(3, 5), 16) || 180;
+    const b = parseInt(skyColorHex.slice(5, 7), 16) || 220;
+
+    const deep = `rgb(${Math.floor(r * 0.7)},${Math.floor(g * 0.75)},${Math.floor(b * 0.9)})`;
+    const mid = `rgb(${r},${g},${b})`;
+    const horizon = "rgb(238, 242, 246)";
+
+    grad.addColorStop(0.0, deep);
+    grad.addColorStop(0.45, mid);
+    grad.addColorStop(0.78, horizon);
+    grad.addColorStop(1.0, "rgb(215, 225, 235)");
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, 16, 256);
+    skyTex.update();
+  }
+
+  skyMat.emissiveTexture = skyTex;
+  skyMat.diffuseColor = new Color3(0, 0, 0);
+  skyMat.specularColor = new Color3(0, 0, 0);
+  skybox.material = skyMat;
+
+  return skybox;
 }

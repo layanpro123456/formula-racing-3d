@@ -1,0 +1,740 @@
+@import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:ital,wght@0,500;0,600;0,700;0,800;0,900;1,700;1,900&family=JetBrains+Mono:wght@400;600;700;800&family=Inter:wght@400;500;600;700&display=swap');
+
+* {
+  box-sizing: border-box;
+}
+
+html, body {
+  margin: 0;
+  width: 100%;
+  height: 100%;
+  background: #080b10;
+  color: #fff;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  overflow: hidden;
+  user-select: none;
+}
+
+.game-shell, .game {
+  height: 100vh;
+  width: 100vw;
+  position: relative;
+  overflow: hidden;
+}
+
+.game canvas {
+  position: absolute;
+  inset: 0;
+  outline: none;
+}
+
+/* ==========================================================================
+   TOP BAR & FLAGS
+   ========================================================================== */
+.f1-topbar {
+  position: absolute;
+  z-index: 10;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 64px;
+  padding: 0 32px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: linear-gradient(180deg, rgba(8, 12, 18, 0.92) 0%, rgba(8, 12, 18, 0) 100%);
+  pointer-events: none;
+}
+
+.f1-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-family: 'Barlow Condensed', sans-serif;
+  font-weight: 800;
+  font-size: 20px;
+  letter-spacing: 1px;
+}
+
+.f1-badge {
+  display: grid;
+  place-items: center;
+  background: #e10600;
+  width: 36px;
+  height: 28px;
+  transform: skew(-12deg);
+  font-size: 18px;
+  font-weight: 900;
+  color: #fff;
+  border-radius: 2px;
+}
+
+.f1-brand b {
+  color: #fff;
+  font-weight: 800;
+  letter-spacing: 1.5px;
+}
+
+.f1-status-flags {
+  display: flex;
+  gap: 10px;
+}
+
+.flag {
+  padding: 6px 14px;
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 1.5px;
+  border-radius: 3px;
+  text-transform: uppercase;
+  animation: pulse-flag 1s infinite alternate;
+}
+
+.flag.off-track {
+  background: #dc2626;
+  color: #fff;
+  box-shadow: 0 0 14px rgba(220, 38, 38, 0.6);
+}
+
+.flag.kerb {
+  background: #f59e0b;
+  color: #000;
+}
+
+.flag.drs-active {
+  background: #10b981;
+  color: #000;
+  box-shadow: 0 0 16px rgba(16, 185, 129, 0.7);
+}
+
+.flag.drs-ready {
+  background: rgba(16, 185, 129, 0.25);
+  border: 1px solid #10b981;
+  color: #6ee7b7;
+}
+
+@keyframes pulse-flag {
+  0% { opacity: 0.85; }
+  100% { opacity: 1; transform: scale(1.02); }
+}
+
+/* ==========================================================================
+   LEFT TIMING TOWER
+   ========================================================================== */
+.timing-tower {
+  position: absolute;
+  z-index: 10;
+  top: 76px;
+  left: 28px;
+  width: 240px;
+  background: rgba(11, 15, 23, 0.88);
+  border-left: 3px solid #e10600;
+  backdrop-filter: blur(12px);
+  border-radius: 4px;
+  overflow: hidden;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.5);
+  pointer-events: none;
+}
+
+.tower-header {
+  display: flex;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: rgba(225, 6, 0, 0.18);
+  font-family: 'Barlow Condensed', sans-serif;
+  font-weight: 800;
+  font-size: 11px;
+  letter-spacing: 2px;
+  color: #f87171;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.tower-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 7px 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.tower-row.player-row {
+  background: linear-gradient(90deg, rgba(225, 6, 0, 0.35) 0%, rgba(225, 6, 0, 0.05) 100%);
+  border-left: 3px solid #facc15;
+}
+
+.tower-row .pos {
+  width: 28px;
+  font-weight: 800;
+  color: #94a3b8;
+}
+
+.tower-row.player-row .pos {
+  color: #facc15;
+}
+
+.tower-row .driver-name {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tower-row .driver-num {
+  font-size: 11px;
+  color: #64748b;
+  margin-right: 4px;
+}
+
+.tower-row .gap {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  color: #cbd5e1;
+}
+
+/* ==========================================================================
+   CENTER TACHOMETER, SHIFT LIGHTS & SPEEDOMETER
+   ========================================================================== */
+.tachometer-center {
+  position: absolute;
+  z-index: 10;
+  bottom: 28px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  background: rgba(10, 14, 22, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-bottom: 3px solid #e10600;
+  padding: 12px 24px;
+  border-radius: 8px;
+  backdrop-filter: blur(14px);
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.6);
+  pointer-events: none;
+}
+
+.shift-lights {
+  display: flex;
+  gap: 5px;
+  margin-bottom: 4px;
+}
+
+.led {
+  width: 14px;
+  height: 8px;
+  border-radius: 2px;
+  background: #1e293b;
+  transition: background 0.05s ease, box-shadow 0.05s ease;
+}
+
+.led.green.on {
+  background: #22c55e;
+  box-shadow: 0 0 10px #22c55e;
+}
+
+.led.yellow.on {
+  background: #eab308;
+  box-shadow: 0 0 10px #eab308;
+}
+
+.led.red.on {
+  background: #ef4444;
+  box-shadow: 0 0 12px #ef4444;
+}
+
+.led.flash-blue.on {
+  background: #38bdf8;
+  box-shadow: 0 0 16px #38bdf8;
+  animation: blink 0.12s infinite;
+}
+
+@keyframes blink {
+  0%, 49% { opacity: 1; }
+  50%, 100% { opacity: 0.2; }
+}
+
+.speed-gear-cluster {
+  display: flex;
+  align-items: center;
+  gap: 28px;
+}
+
+.gear-display {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.gear-display .label {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 10px;
+  letter-spacing: 2px;
+  color: #94a3b8;
+}
+
+.gear-display .value {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 52px;
+  font-weight: 900;
+  line-height: 1;
+  color: #facc15;
+  text-shadow: 0 0 20px rgba(250, 204, 21, 0.4);
+}
+
+.speed-display {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 120px;
+}
+
+.speed-display .value {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 64px;
+  font-weight: 900;
+  line-height: 0.9;
+  letter-spacing: -1px;
+  color: #fff;
+}
+
+.speed-display .unit {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 12px;
+  letter-spacing: 2px;
+  color: #94a3b8;
+}
+
+.drs-pod {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.drs-indicator {
+  padding: 4px 10px;
+  border-radius: 3px;
+  font-family: 'Barlow Condensed', sans-serif;
+  font-weight: 800;
+  font-size: 13px;
+  letter-spacing: 1.5px;
+  background: #1e293b;
+  color: #64748b;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.drs-indicator.available {
+  border-color: #10b981;
+  color: #34d399;
+}
+
+.drs-indicator.active {
+  background: #10b981;
+  color: #000;
+  box-shadow: 0 0 14px #10b981;
+}
+
+.rpm-text {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: #94a3b8;
+}
+
+/* ==========================================================================
+   RIGHT TELEMETRY CARD & CONTROLS
+   ========================================================================== */
+.telemetry-right {
+  position: absolute;
+  z-index: 10;
+  top: 76px;
+  right: 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 250px;
+  pointer-events: auto;
+}
+
+.hud-card {
+  background: rgba(11, 15, 23, 0.88);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-right: 3px solid #e10600;
+  backdrop-filter: blur(12px);
+  border-radius: 4px;
+  padding: 14px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.5);
+}
+
+.card-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.card-row .lbl {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 11px;
+  letter-spacing: 2px;
+  color: #94a3b8;
+}
+
+.card-row .val {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 22px;
+  font-weight: 800;
+}
+
+.card-row .val.highlight {
+  color: #facc15;
+}
+
+.card-row .val.mono {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 17px;
+  color: #e2e8f0;
+}
+
+.sector-badges {
+  display: flex;
+  gap: 6px;
+}
+
+.s-badge {
+  padding: 3px 8px;
+  border-radius: 3px;
+  font-family: 'Barlow Condensed', sans-serif;
+  font-weight: 800;
+  font-size: 11px;
+  background: #1e293b;
+  color: #64748b;
+}
+
+.s-badge.active {
+  background: #facc15;
+  color: #000;
+  box-shadow: 0 0 8px #facc15;
+}
+
+.s-badge.done {
+  background: #10b981;
+  color: #000;
+}
+
+.card-row.g-forces {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: #94a3b8;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  padding-top: 8px;
+}
+
+.card-row.g-forces b {
+  color: #fff;
+}
+
+.hud-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.action-btn {
+  background: rgba(17, 24, 39, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #e2e8f0;
+  padding: 9px 12px;
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: all 0.15s ease;
+  backdrop-filter: blur(8px);
+}
+
+.action-btn:hover {
+  background: #1f2937;
+  border-color: #e10600;
+}
+
+.action-btn.pause-btn {
+  background: rgba(225, 6, 0, 0.2);
+  border-color: #e10600;
+  color: #fca5a5;
+}
+
+.action-btn.pause-btn:hover {
+  background: #e10600;
+  color: #fff;
+}
+
+/* ==========================================================================
+   START LIGHTS COUNTDOWN OVERLAY
+   ========================================================================== */
+.countdown-backdrop {
+  position: absolute;
+  z-index: 50;
+  inset: 0;
+  background: rgba(5, 8, 12, 0.55);
+  display: grid;
+  place-items: center;
+  backdrop-filter: blur(4px);
+  pointer-events: none;
+}
+
+.gantry-lights-box {
+  background: rgba(15, 23, 42, 0.95);
+  border: 2px solid #334155;
+  border-top: 4px solid #e10600;
+  padding: 24px 36px;
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.8);
+}
+
+.gantry-header {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 3px;
+  color: #94a3b8;
+}
+
+.gantry-lights {
+  display: flex;
+  gap: 18px;
+  background: #090d16;
+  padding: 14px 22px;
+  border-radius: 6px;
+  border: 1px solid #1e293b;
+}
+
+.gantry-light {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: #1e293b;
+  border: 2px solid #0f172a;
+}
+
+.gantry-light.active-red {
+  background: #ef4444;
+  box-shadow: 0 0 24px #ef4444, inset 0 0 8px #fee2e2;
+}
+
+.gantry-light.active-green {
+  background: #22c55e;
+  box-shadow: 0 0 28px #22c55e, inset 0 0 10px #dcfce7;
+}
+
+.countdown-text {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 26px;
+  font-weight: 900;
+  letter-spacing: 2px;
+  color: #f8fafc;
+}
+
+/* ==========================================================================
+   MENU PANELS & VICTORY MODAL
+   ========================================================================== */
+.f1-menu-panel {
+  position: absolute;
+  z-index: 30;
+  left: 6vw;
+  top: 14%;
+  width: min(480px, 88vw);
+  padding: 30px 34px;
+  background: linear-gradient(135deg, rgba(11, 15, 23, 0.96) 0%, rgba(15, 23, 42, 0.88) 100%);
+  border-left: 4px solid #e10600;
+  backdrop-filter: blur(16px);
+  border-radius: 4px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.7);
+}
+
+.f1-menu-panel h1 {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: clamp(48px, 6vw, 76px);
+  font-weight: 900;
+  line-height: 0.88;
+  margin: 12px 0 18px;
+  letter-spacing: -1px;
+}
+
+.f1-menu-panel h1 span {
+  color: #e10600;
+}
+
+.form-group {
+  margin-bottom: 16px;
+}
+
+.form-group label {
+  display: block;
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 2px;
+  color: #94a3b8;
+  margin-bottom: 6px;
+}
+
+.f1-select {
+  width: 100%;
+  padding: 12px 14px;
+  background: #1e293b;
+  color: #f8fafc;
+  border: 1px solid #334155;
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  outline: none;
+  border-radius: 3px;
+}
+
+.f1-select:focus {
+  border-color: #e10600;
+}
+
+.pills-group {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.pill-btn {
+  padding: 10px;
+  background: #1e293b;
+  border: 1px solid #334155;
+  color: #cbd5e1;
+  font-family: 'Barlow Condensed', sans-serif;
+  font-weight: 800;
+  font-size: 14px;
+  letter-spacing: 1px;
+  cursor: pointer;
+  border-radius: 3px;
+  text-align: center;
+  transition: all 0.15s ease;
+}
+
+.pill-btn.active {
+  background: #e10600;
+  border-color: #e10600;
+  color: #fff;
+  box-shadow: 0 0 12px rgba(225, 6, 0, 0.4);
+}
+
+.circuit-info-card {
+  display: flex;
+  justify-content: space-between;
+  padding: 10px 14px;
+  background: rgba(30, 41, 59, 0.5);
+  border-radius: 3px;
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 13px;
+  letter-spacing: 1px;
+  color: #94a3b8;
+  margin: 14px 0 22px;
+}
+
+.circuit-info-card b {
+  color: #f8fafc;
+}
+
+.f1-primary-btn {
+  width: 100%;
+  padding: 16px 20px;
+  background: #e10600;
+  border: none;
+  color: #fff;
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 20px;
+  font-weight: 900;
+  letter-spacing: 2px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  cursor: pointer;
+  border-radius: 3px;
+  transition: background 0.15s ease, transform 0.1s ease;
+}
+
+.f1-primary-btn:hover {
+  background: #ff1812;
+  transform: translateY(-1px);
+}
+
+.controls-legend {
+  margin-top: 16px;
+  text-align: center;
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 11px;
+  letter-spacing: 1.5px;
+  color: #64748b;
+}
+
+/* ==========================================================================
+   VICTORY & CHECKERED FLAG MODAL
+   ========================================================================== */
+.victory-modal {
+  width: min(420px, 92vw);
+  background: #0f172a;
+  border-top: 4px solid #facc15;
+  border-radius: 6px;
+  padding: 32px 28px;
+  text-align: center;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.85);
+}
+
+.victory-modal h2 {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 52px;
+  font-weight: 900;
+  margin: 8px 0 20px;
+  color: #facc15;
+}
+
+.victory-pos {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 28px;
+  font-weight: 800;
+  color: #fff;
+  margin-bottom: 24px;
+}
+
+/* ==========================================================================
+   MOBILE & RESPONSIVE TWEAKS
+   ========================================================================== */
+@media (max-width: 768px) {
+  .timing-tower {
+    display: none;
+  }
+  .telemetry-right {
+    top: 68px;
+    right: 14px;
+    width: 180px;
+  }
+  .tachometer-center {
+    bottom: 16px;
+    padding: 8px 14px;
+  }
+  .speed-display .value {
+    font-size: 44px;
+  }
+  .gear-display .value {
+    font-size: 38px;
+  }
+}

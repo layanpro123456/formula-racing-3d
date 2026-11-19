@@ -1,0 +1,226 @@
+"use client";
+
+import React, { useMemo } from "react";
+import { TelemetryData } from "@/lib/physics/VehiclePhysics";
+import { AICarState } from "@/lib/ai/AIDriver";
+import { Track } from "@/data/tracks";
+
+interface RacingHUDProps {
+  telemetry: TelemetryData;
+  playerLap: number;
+  totalLaps: number;
+  aiCars: AICarState[];
+  track: Track;
+  cameraMode: "chase" | "cockpit" | "nose";
+  onToggleCamera: () => void;
+  onPause: () => void;
+  isAudioMuted: boolean;
+  onToggleAudio: () => void;
+  countdown: number | null; // 3, 2, 1, 0 (GO), or null
+}
+
+export function RacingHUD({
+  telemetry,
+  playerLap,
+  totalLaps,
+  aiCars,
+  track,
+  cameraMode,
+  onToggleCamera,
+  onPause,
+  isAudioMuted,
+  onToggleAudio,
+  countdown
+}: RacingHUDProps) {
+  // Sort positions (P1, P2, P3...) based on lap and t-coordinate
+  const leaderboard = useMemo(() => {
+    const list = [
+      {
+        id: "player",
+        name: "YOU",
+        number: 1,
+        lap: playerLap,
+        t: telemetry.lapTime > 0 ? telemetry.currentSector : 0,
+        score: playerLap * 10 + (telemetry.speedMs > 0 ? 1 : 0),
+        isPlayer: true
+      },
+      ...aiCars.map((ai) => ({
+        id: ai.id,
+        name: ai.name,
+        number: ai.number,
+        lap: ai.lap,
+        t: ai.t,
+        score: ai.lap * 10 + ai.t * 8,
+        isPlayer: false
+      }))
+    ];
+
+    list.sort((a, b) => b.score - a.score);
+    return list;
+  }, [playerLap, telemetry, aiCars]);
+
+  const playerPos = leaderboard.findIndex((item) => item.isPlayer) + 1;
+
+  // Format lap time MM:SS.mmm
+  const formatTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = (seconds % 60).toFixed(3);
+    return `${mins.toString().padStart(2, "0")}:${secs.padStart(6, "0")}`;
+  };
+
+  // Shift light LEDs (15 LEDs: 5 green, 5 yellow, 5 red/purple)
+  const rpmRatio = telemetry.rpmRatio;
+  const numActiveLEDs = Math.floor(rpmRatio * 15);
+
+  return (
+    <div className="racing-hud-overlay">
+      {/* 5-Red-Lights Countdown Sequence Overlay */}
+      {countdown !== null && (
+        <div className="countdown-backdrop">
+          <div className="gantry-lights-box">
+            <div className="gantry-header">FORMULA START PROCEDURE</div>
+            <div className="gantry-lights">
+              {[1, 2, 3, 4, 5].map((lightNum) => {
+                const isActive = countdown > 0 && lightNum <= (4 - countdown);
+                const isGreen = countdown === 0;
+                return (
+                  <div
+                    key={lightNum}
+                    className={`gantry-light ${isActive ? "active-red" : ""} ${isGreen ? "active-green" : ""}`}
+                  />
+                );
+              })}
+            </div>
+            <div className="countdown-text">
+              {countdown > 0 ? `START IN ${countdown}` : "LIGHTS OUT AND AWAY WE GO!"}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Top Bar: Circuit Info & Race Status */}
+      <header className="f1-topbar">
+        <div className="f1-brand">
+          <span className="f1-badge">F1</span>
+          <div>
+            <b>{track.name}</b> · {track.location}
+          </div>
+        </div>
+        <div className="f1-status-flags">
+          {telemetry.offTrack && <span className="flag off-track">OFF TRACK WARNING</span>}
+          {telemetry.onKerb && <span className="flag kerb">KERB RUMBLE</span>}
+          {telemetry.drsActive && <span className="flag drs-active">DRS ENABLED</span>}
+          {!telemetry.drsActive && telemetry.drsAvailable && (
+            <span className="flag drs-ready">DRS AVAILABLE (PRESS E / SPACE)</span>
+          )}
+        </div>
+      </header>
+
+      {/* Left Timing Tower (F1 Broadcast Style) */}
+      <div className="timing-tower">
+        <div className="tower-header">
+          <span>POS</span>
+          <span>DRIVER</span>
+          <span>GAP</span>
+        </div>
+        {leaderboard.map((item, idx) => (
+          <div
+            key={item.id}
+            className={`tower-row ${item.isPlayer ? "player-row" : ""}`}
+          >
+            <span className="pos">P{idx + 1}</span>
+            <span className="driver-name">
+              <span className="driver-num">#{item.number}</span> {item.name}
+            </span>
+            <span className="gap">
+              {idx === 0 ? "LEADER" : `+${(idx * 0.485).toFixed(3)}s`}
+            </span>
+          </div>
+        ))}
+      </div>
+
+      {/* Center Dynamic Tachometer, RPM Bar, Speedometer & Gear */}
+      <div className="tachometer-center">
+        {/* Shift light LEDs */}
+        <div className="shift-lights">
+          {Array.from({ length: 15 }).map((_, i) => {
+            const active = i < numActiveLEDs;
+            let colorClass = "green";
+            if (i >= 5 && i < 10) colorClass = "yellow";
+            if (i >= 10) colorClass = "red";
+            if (rpmRatio > 0.94) colorClass = "flash-blue";
+            return (
+              <div
+                key={i}
+                className={`led ${colorClass} ${active ? "on" : "off"}`}
+              />
+            );
+          })}
+        </div>
+
+        <div className="speed-gear-cluster">
+          <div className="gear-display">
+            <span className="label">GEAR</span>
+            <span className="value">{telemetry.speedMs < -0.1 ? "R" : telemetry.gear}</span>
+          </div>
+
+          <div className="speed-display">
+            <span className="value">{telemetry.speedKmh}</span>
+            <span className="unit">KM/H</span>
+          </div>
+
+          <div className="drs-pod">
+            <span className={`drs-indicator ${telemetry.drsActive ? "active" : telemetry.drsAvailable ? "available" : ""}`}>
+              DRS
+            </span>
+            <span className="rpm-text">{telemetry.rpm} RPM</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Right Telemetry Block (Laps, Sectors, G-Forces, Timers) */}
+      <div className="telemetry-right">
+        <div className="hud-card">
+          <div className="card-row">
+            <span className="lbl">LAP</span>
+            <span className="val highlight">{playerLap} / {totalLaps}</span>
+          </div>
+          <div className="card-row">
+            <span className="lbl">TIME</span>
+            <span className="val mono">{formatTime(telemetry.lapTime)}</span>
+          </div>
+          <div className="card-row">
+            <span className="lbl">SECTOR</span>
+            <div className="sector-badges">
+              {[1, 2, 3].map((s) => (
+                <span
+                  key={s}
+                  className={`s-badge ${telemetry.currentSector === s ? "active" : telemetry.currentSector > s ? "done" : ""}`}
+                >
+                  S{s}
+                </span>
+              ))}
+            </div>
+          </div>
+          <div className="card-row g-forces">
+            <span>LAT: <b>{telemetry.gForceLat}G</b></span>
+            <span>LONG: <b>{telemetry.gForceLong}G</b></span>
+          </div>
+        </div>
+
+        {/* Action Buttons: Camera Switch, Sound, Pause */}
+        <div className="hud-actions">
+          <button className="action-btn" onClick={onToggleCamera} title="Toggle Camera (C)">
+            📷 {cameraMode.toUpperCase()}
+          </button>
+          <button className="action-btn" onClick={onToggleAudio} title="Mute/Unmute Audio (M)">
+            {isAudioMuted ? "🔇 SOUND OFF" : "🔊 SOUND ON"}
+          </button>
+          <button className="action-btn pause-btn" onClick={onPause}>
+            ⏸ PAUSE
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}

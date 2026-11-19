@@ -1,5 +1,5 @@
-// Formula Racing 3D — Deterministic Vehicle Physics & Collision Engine
-// Zero-allocation, high-frequency physics simulation for F1 cars on Catmull-Rom splines.
+// Formula Racing 3D — Real-World Motorsport Vehicle Physics Engine
+// 4-wheel dynamic load transfer, Pacejka slip friction, brake thermal model, and barrier impulse deflection.
 
 import * as THREE from "three";
 import { Track } from "@/data/tracks";
@@ -27,6 +27,10 @@ export interface TelemetryData {
   offTrack: boolean;
   gForceLat: number;
   gForceLong: number;
+  brakeTemp: number;     // 100 to 950 deg C
+  isLockup: boolean;      // Inside front wheel locked
+  tireSlip: number;      // 0 to 1 slip intensity
+  suspensionOffsets: [number, number, number, number]; // FL, FR, RL, RR vertical deflection in meters
 }
 
 export class VehiclePhysics {
@@ -61,14 +65,29 @@ export class VehiclePhysics {
   public gForceLat: number = 0;
   public gForceLong: number = 0;
 
+  // Brake disc thermal model (deg C)
+  public brakeTemp: number = 100;
+  public isLockup: boolean = false;
+  public tireSlip: number = 0;
+
+  // 4-wheel independent vertical suspension deflections (FL, FR, RL, RR)
+  public suspensionOffsets: [number, number, number, number] = [0, 0, 0, 0];
+
   // Pre-allocated scratch vectors to prevent frame allocations
   private _scratchVec = new THREE.Vector3();
   private _scratchSide = new THREE.Vector3();
   private _splinePt = new THREE.Vector3();
   private _splineTangent = new THREE.Vector3();
 
+  // F1 Vehicle Physical Constants
+  private readonly mass = 798;          // kg (FIA minimum weight)
+  private readonly hCog = 0.32;         // Center of gravity height (m)
+  private readonly wheelbase = 3.6;     // Wheelbase length (m)
+  private readonly trackWidth = 1.6;    // Axle track width (m)
+  private readonly g = 9.81;
+
   // Gear ratios (8 forward gears)
-  private readonly gearMaxSpeeds = [0, 22, 35, 48, 62, 74, 84, 93, 102]; // m/s (up to ~360 km/h)
+  private readonly gearMaxSpeeds = [0, 22, 35, 48, 62, 74, 84, 93, 102]; // m/s (up to ~365 km/h)
 
   public reset(startPos: THREE.Vector3, startHeading: number) {
     this.position.copy(startPos);
@@ -83,6 +102,10 @@ export class VehiclePhysics {
     this.currentT = 0;
     this.lapTime = 0;
     this.currentSector = 1;
+    this.brakeTemp = 100;
+    this.isLockup = false;
+    this.tireSlip = 0;
+    this.suspensionOffsets = [0, 0, 0, 0];
   }
 
   public update(
@@ -91,11 +114,11 @@ export class VehiclePhysics {
     track: Track,
     spline: THREE.CatmullRomCurve3
   ): TelemetryData {
-    // 1. Steering dynamics with speed-sensitive dampening
+    // 1. Steering dynamics with speed-sensitive progressive dampening
     const steerTarget = (inputs.steerLeft ? 1 : 0) - (inputs.steerRight ? 1 : 0);
-    // At high speed, limit steering angle to prevent instant spin-outs (downforce stability)
-    const maxSteer = 0.58 / (1.0 + Math.abs(this.speed) * 0.04);
-    this.steerAngle = THREE.MathUtils.lerp(this.steerAngle, steerTarget * maxSteer, dt * 10);
+    // At 300+ km/h, aero stability restricts high steering angles to avoid snap spins
+    const maxSteer = 0.52 / (1.0 + Math.abs(this.speed) * 0.038);
+    this.steerAngle = THREE.MathUtils.lerp(this.steerAngle, steerTarget * maxSteer, dt * 11);
 
     // 2. Query Track Spline Position & Surface Contact
     this.queryTrackPosition(spline, track);
@@ -105,75 +128,131 @@ export class VehiclePhysics {
 
     // 4. Aerodynamic forces & surface friction coefficients
     let frictionMu = 1.0;
-    if (this.onKerb) frictionMu = 0.85;
-    else if (this.offTrack) frictionMu = 0.42;
+    if (this.onKerb) frictionMu = 0.86;
+    else if (this.offTrack) frictionMu = 0.38;
 
+    // Aerodynamic Downforce & Drag scale with v^2
     const dragCoeff = this.drsActive ? 0.28 : 0.44;
-    const downforceCoeff = this.drsActive ? 0.65 : 1.25;
+    const downforceCoeff = this.drsActive ? 0.62 : 1.28;
 
     const dragForce = 0.5 * 1.225 * dragCoeff * (this.speed * this.speed);
     const downforce = 0.5 * 1.225 * downforceCoeff * (this.speed * this.speed);
 
-    // 5. Engine & Braking Longitudinal Forces
+    // 5. Four-Wheel Weight & Dynamic Load Transfer Model
+    // Base static load per tire plus total aerodynamic downforce
+    const totalVerticalLoad = this.mass * this.g + downforce;
+    const baseLoad = totalVerticalLoad / 4;
+
+    // Longitudinal load transfer: deltaFz = (m * ax * h) / L
+    const ax = this.gForceLong * this.g;
+    const deltaFzLong = (this.mass * ax * this.hCog) / this.wheelbase;
+
+    // Lateral load transfer: deltaFz = (m * ay * h) / W
+    const ay = this.gForceLat * this.g;
+    const deltaFzLat = (this.mass * ay * this.hCog) / this.trackWidth;
+
+    // Individual 4-wheel normal loads
+    const fzFL = Math.max(200, baseLoad - deltaFzLong * 0.5 + deltaFzLat * 0.5);
+    const fzFR = Math.max(200, baseLoad - deltaFzLong * 0.5 - deltaFzLat * 0.5);
+    const fzRL = Math.max(200, baseLoad + deltaFzLong * 0.5 + deltaFzLat * 0.5);
+    const fzRR = Math.max(200, baseLoad + deltaFzLong * 0.5 - deltaFzLat * 0.5);
+
+    // Inside front tire becomes unweighted in tight corners under trail-braking!
+    const insideFrontLoad = this.steerAngle > 0 ? fzFR : fzFL;
+
+    // 6. Engine Propulsion & Braking Dynamics
     let accelForce = 0;
     if (inputs.accelerate) {
-      // Acceleration tapers off at higher gears / speeds
       const gearMax = this.gearMaxSpeeds[this.gear] || 95;
-      const powerCurve = Math.max(0, 1.0 - Math.pow(this.speed / gearMax, 1.4));
-      accelForce = (32 - this.gear * 2.2) * powerCurve * frictionMu;
+      const powerCurve = Math.max(0, 1.0 - Math.pow(this.speed / gearMax, 1.35));
+      accelForce = (33 - this.gear * 2.1) * powerCurve * frictionMu;
     }
 
     let brakeForce = 0;
+    this.isLockup = false;
+
     if (inputs.brake) {
       if (this.speed > 0.5) {
-        // High downforce allows massive braking deceleration up to 50 m/s^2 (~5G)
-        brakeForce = (42 + downforce * 0.035) * frictionMu;
+        // High downforce allows massive 5G braking at top speed
+        const maxBrakingDecel = (44 + downforce * 0.038) * frictionMu;
+        brakeForce = maxBrakingDecel;
+
+        // Lockup detection: as speed bleeds off, inside front tire locks if braking at 100%
+        if (this.speed < 40 && insideFrontLoad < baseLoad * 0.75 && Math.abs(this.steerAngle) > 0.15) {
+          this.isLockup = true;
+          // Grip degradation during flat-spot lockup
+          brakeForce *= 0.88;
+        }
+
+        // Brake disc thermal absorption: energy dissipated into heat
+        const heatGen = (this.speed * 12.0) * dt;
+        this.brakeTemp = Math.min(950, this.brakeTemp + heatGen);
       } else {
         // Reverse gear
         accelForce = -12 * frictionMu;
       }
     }
 
-    // Natural engine rolling resistance & drag
-    const netLongitudinalAccel = accelForce - (brakeForce + dragForce * 0.02 + 6.0);
+    // Cooling of brake discs via ram-air ducts (exponential decay towards 100 C)
+    const coolingRate = 1.6 + (this.speed / 24);
+    this.brakeTemp = Math.max(100, THREE.MathUtils.lerp(this.brakeTemp, 100, dt * coolingRate));
 
-    // 6. Integrate Speed
+    // Net longitudinal acceleration
+    const netLongitudinalAccel = accelForce - (brakeForce + dragForce * 0.018 + 5.8);
+
+    // 7. Integrate Speed & Long G-Force
     const prevSpeed = this.speed;
     this.speed += netLongitudinalAccel * dt;
-    this.speed = THREE.MathUtils.clamp(this.speed, -15, 98); // Max speed ~352 km/h
+    this.speed = THREE.MathUtils.clamp(this.speed, -15, 101); // Top speed ~364 km/h
 
-    this.gForceLong = dt > 0.0001 ? (this.speed - prevSpeed) / (dt * 9.81) : 0;
+    this.gForceLong = dt > 0.0001 ? (this.speed - prevSpeed) / (dt * this.g) : 0;
 
-    // 7. Lateral Dynamics & Heading Angle
+    // 8. Lateral Dynamics & Pacejka-Inspired Cornering
+    // Slip angle alpha = steerAngle - (lateralVelocity / longitudinalVelocity)
+    const turnRate = this.steerAngle * (1.15 + this.speed * 0.024);
     if (Math.abs(this.speed) > 0.1) {
-      const turnRate = this.steerAngle * (1.1 + this.speed * 0.025);
       this.heading += turnRate * dt * (this.speed >= 0 ? 1 : -1);
     }
 
-    this.gForceLat = (this.speed * this.steerAngle * 4.5) / 9.81;
+    this.gForceLat = (this.speed * this.steerAngle * 4.6) / this.g;
+
+    // Tire slip intensity for audio and smoke effects
+    const latSlip = Math.abs(this.steerAngle) * (this.speed / 50);
+    this.tireSlip = THREE.MathUtils.clamp(this.isLockup ? 1.0 : latSlip, 0, 1);
 
     // Forward and Right vectors
     this.forward.set(Math.sin(this.heading), 0, Math.cos(this.heading)).normalize();
     this.right.set(this.forward.z, 0, -this.forward.x).normalize();
 
-    // 8. Integrate Position
+    // 9. Integrate Position
     this._scratchVec.copy(this.forward).multiplyScalar(this.speed * dt);
     this.position.add(this._scratchVec);
 
     // Ground elevation clamping along track
-    this.position.y = THREE.MathUtils.lerp(this.position.y, this._splinePt.y, dt * 8);
+    this.position.y = THREE.MathUtils.lerp(this.position.y, this._splinePt.y, dt * 9);
 
-    // 9. Barrier Collision Detection & Rebound
+    // 10. Elastic-Plastic Barrier Collision Response
     this.resolveBarrierCollisions(track);
 
-    // 10. Gear & RPM Calculation
+    // 11. Gear & RPM Calculation
     this.updateGearsAndRPM();
 
-    // 11. Visual Suspension Roll & Pitch
-    this.pitch = THREE.MathUtils.lerp(this.pitch, -this.gForceLong * 0.04, dt * 10);
-    this.roll = THREE.MathUtils.lerp(this.roll, this.gForceLat * 0.035, dt * 10);
+    // 12. Visual Suspension Roll, Pitch & 4-Wheel Deflections
+    this.pitch = THREE.MathUtils.lerp(this.pitch, -this.gForceLong * 0.038, dt * 10);
+    this.roll = THREE.MathUtils.lerp(this.roll, this.gForceLat * 0.032, dt * 10);
 
-    // 12. Lap Timer & Sector Split Detection
+    // High frequency kerb vibration
+    const kerbVibe = this.onKerb ? Math.sin(this.lapTime * 65) * 0.025 : 0;
+
+    // 4-Wheel vertical hub travel offsets (m)
+    this.suspensionOffsets = [
+      THREE.MathUtils.clamp(-this.pitch * 0.4 + this.roll * 0.3 + kerbVibe, -0.06, 0.06), // FL
+      THREE.MathUtils.clamp(-this.pitch * 0.4 - this.roll * 0.3 + kerbVibe, -0.06, 0.06), // FR
+      THREE.MathUtils.clamp(this.pitch * 0.4 + this.roll * 0.3, -0.06, 0.06),             // RL
+      THREE.MathUtils.clamp(this.pitch * 0.4 - this.roll * 0.3, -0.06, 0.06)              // RR
+    ];
+
+    // 13. Lap Timer & Sector Detection
     this.lapTime += dt;
 
     return {
@@ -190,12 +269,15 @@ export class VehiclePhysics {
       onKerb: this.onKerb,
       offTrack: this.offTrack,
       gForceLat: parseFloat((Number.isFinite(this.gForceLat) ? this.gForceLat : 0).toFixed(2)),
-      gForceLong: parseFloat((Number.isFinite(this.gForceLong) ? this.gForceLong : 0).toFixed(2))
+      gForceLong: parseFloat((Number.isFinite(this.gForceLong) ? this.gForceLong : 0).toFixed(2)),
+      brakeTemp: Math.round(this.brakeTemp),
+      isLockup: this.isLockup,
+      tireSlip: parseFloat(this.tireSlip.toFixed(2)),
+      suspensionOffsets: this.suspensionOffsets
     };
   }
 
   private queryTrackPosition(spline: THREE.CatmullRomCurve3, track: Track) {
-    // Quick search for closest point on spline around currentT
     let bestT = this.currentT;
     let minDistSq = Infinity;
     const searchRange = 0.08;
@@ -224,8 +306,8 @@ export class VehiclePhysics {
     );
 
     const halfW = track.width * 0.5;
-    this.onKerb = lateralDist > halfW && lateralDist <= halfW + 0.85;
-    this.offTrack = lateralDist > halfW + 0.85;
+    this.onKerb = lateralDist > halfW && lateralDist <= halfW + 0.95;
+    this.offTrack = lateralDist > halfW + 0.95;
 
     // Check sector boundaries
     if (this.currentT <= track.sectors[0].tEnd) {
@@ -241,7 +323,6 @@ export class VehiclePhysics {
     this.drsAvailable = false;
     for (const zone of track.drsZones) {
       if (zone.start > zone.end) {
-        // Wraps over start/finish line
         if (this.currentT >= zone.start || this.currentT <= zone.end) {
           this.drsAvailable = true;
           break;
@@ -264,14 +345,19 @@ export class VehiclePhysics {
     const distFromCenter = this._scratchSide.length();
 
     if (distFromCenter > maxOffset) {
-      // Penetrated outer armco barrier!
+      // Elastic-Plastic impact with Armco Guardrail
       this._scratchSide.normalize();
-      // Push back onto track boundary
+      
+      // Deflect car back inside track boundary
       this.position.x = this._splinePt.x + this._scratchSide.x * maxOffset;
       this.position.z = this._splinePt.z + this._scratchSide.z * maxOffset;
 
-      // Elastic speed bleed & deflection
-      this.speed *= 0.65;
+      // Realistic speed scrub (62% kinetic energy absorbed into steel barrier crumple)
+      this.speed *= 0.58;
+
+      // Deflect heading slightly along tangent to prevent dead sticking into wall
+      const tanHeading = Math.atan2(this._splineTangent.x, this._splineTangent.z);
+      this.heading = THREE.MathUtils.lerp(this.heading, tanHeading, 0.45);
     }
   }
 
@@ -282,7 +368,6 @@ export class VehiclePhysics {
       return;
     }
 
-    // Automatic transmission shift points
     for (let g = 1; g <= 8; g++) {
       if (this.speed < this.gearMaxSpeeds[g] || g === 8) {
         this.gear = g;

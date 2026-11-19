@@ -9,6 +9,51 @@ export function build3DCurve(points: [number, number, number][], scale = 4.8): T
   return new THREE.CatmullRomCurve3(pts, true, "catmullrom", 0.16);
 }
 
+// Procedural Canvas-Generated Asphalt & Rubbered Racing Groove Texture
+function createAsphaltTexture(): THREE.CanvasTexture | null {
+  if (typeof document === "undefined") return null;
+  const canvas = document.createElement("canvas");
+  canvas.width = 512;
+  canvas.height = 512;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return null;
+
+  // Dark asphalt base
+  ctx.fillStyle = "#1e2023";
+  ctx.fillRect(0, 0, 512, 512);
+
+  // Micro-aggregate stone flecks
+  for (let i = 0; i < 28000; i++) {
+    const x = Math.random() * 512;
+    const y = Math.random() * 512;
+    const gray = Math.floor(25 + Math.random() * 35);
+    ctx.fillStyle = `rgb(${gray},${gray},${gray})`;
+    ctx.fillRect(x, y, 1.5, 1.5);
+  }
+
+  // Dark rubbered-in racing groove along tire lines (X ~ 180 and X ~ 330)
+  const grad = ctx.createLinearGradient(0, 0, 512, 0);
+  grad.addColorStop(0, "rgba(22, 23, 26, 0.1)");
+  grad.addColorStop(0.35, "rgba(10, 11, 13, 0.65)"); // Left wheel rubber groove
+  grad.addColorStop(0.5, "rgba(24, 26, 30, 0.2)");  // Clean center
+  grad.addColorStop(0.65, "rgba(10, 11, 13, 0.65)"); // Right wheel rubber groove
+  grad.addColorStop(1, "rgba(22, 23, 26, 0.1)");
+
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, 512, 512);
+
+  // White edge lines on track boundaries
+  ctx.fillStyle = "#e2e8f0";
+  ctx.fillRect(12, 0, 14, 512); // Left edge line
+  ctx.fillRect(486, 0, 14, 512); // Right edge line
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.wrapS = THREE.RepeatWrapping;
+  texture.wrapT = THREE.RepeatWrapping;
+  texture.repeat.set(1, 80);
+  return texture;
+}
+
 interface TrackGeneratorProps {
   track: Track;
   curve: THREE.CatmullRomCurve3;
@@ -23,12 +68,14 @@ export function TrackSceneGeometry({ track, curve }: TrackGeneratorProps) {
     runoffGeometry,
     leftBarrierGeometry,
     rightBarrierGeometry,
-    startFinishGantry
+    startFinishGantry,
+    brakingBoards,
+    tireBarriers
   } = useMemo(() => {
     const segments = 640;
     const halfW = track.width * 0.5;
-    const kerbW = 0.85;
-    const runoffW = 2.4;
+    const kerbW = 0.95;
+    const runoffW = 3.2;
     const barrierOffset = halfW + kerbW + runoffW;
 
     // Road vertices
@@ -37,7 +84,7 @@ export function TrackSceneGeometry({ track, curve }: TrackGeneratorProps) {
     const roadUVs: number[] = [];
     const roadIndices: number[] = [];
 
-    // Kerbs vertices
+    // 3D Chamfered Kerb vertices
     const lKerbVerts: number[] = [];
     const lKerbColors: number[] = [];
     const rKerbVerts: number[] = [];
@@ -52,6 +99,10 @@ export function TrackSceneGeometry({ track, curve }: TrackGeneratorProps) {
     const leftBarrierPts: THREE.Vector3[] = [];
     const rightBarrierPts: THREE.Vector3[] = [];
 
+    // Dynamic trackside furniture collections
+    const boards: { pos: [number, number, number]; rot: number; text: string }[] = [];
+    const tireStacks: { pos: [number, number, number]; rot: number }[] = [];
+
     const upVector = new THREE.Vector3(0, 1, 0);
 
     for (let i = 0; i <= segments; i++) {
@@ -59,50 +110,83 @@ export function TrackSceneGeometry({ track, curve }: TrackGeneratorProps) {
       const pt = curve.getPointAt(t);
       const tangent = curve.getTangentAt(t).normalize();
       
-      // Compute lateral normal vector perpendicular to tangent
-      const side = new THREE.Vector3().crossVectors(tangent, upVector).normalize();
+      // Calculate true mathematical curvature to derive realistic banking
+      const nextT = (t + 0.005) % 1.0;
+      const nextTan = curve.getTangentAt(nextT).normalize();
+      const deltaTan = nextTan.clone().sub(tangent);
+      const curvSign = (tangent.z * deltaTan.x - tangent.x * deltaTan.z) * 14.0;
       
-      // Surface banking tilt on curves
-      const curvature = Math.sin(t * Math.PI * 8) * 0.05;
-      const bankVector = upVector.clone().addScaledVector(side, curvature).normalize();
-      const bankedSide = new THREE.Vector3().crossVectors(tangent, bankVector).normalize();
+      // Real-world superelevation banking angle (inward on sharp corners)
+      const bankingAngle = THREE.MathUtils.clamp(curvSign, -0.14, 0.14);
+
+      // Compute banked lateral axis
+      const side = new THREE.Vector3().crossVectors(tangent, upVector).normalize();
+      const bankAxis = upVector.clone().addScaledVector(side, -bankingAngle).normalize();
+      const bankedSide = new THREE.Vector3().crossVectors(tangent, bankAxis).normalize();
 
       // Road edges
       const lRoad = pt.clone().addScaledVector(bankedSide, halfW);
       const rRoad = pt.clone().addScaledVector(bankedSide, -halfW);
 
       roadVerts.push(lRoad.x, lRoad.y + 0.02, lRoad.z, rRoad.x, rRoad.y + 0.02, rRoad.z);
-      roadNorms.push(0, 1, 0, 0, 1, 0);
+      roadNorms.push(bankAxis.x, bankAxis.y, bankAxis.z, bankAxis.x, bankAxis.y, bankAxis.z);
       roadUVs.push(0, t * 80, 1, t * 80);
 
-      // Kerb outer edges
-      const lKerb = lRoad.clone().addScaledVector(bankedSide, kerbW);
-      const rKerb = rRoad.clone().addScaledVector(bankedSide, -kerbW);
+      // 3D Chamfered Sawtooth Kerbs (+0.08m vertical lip with 45-deg bevel)
+      const lKerbInner = lRoad.clone();
+      const lKerbOuter = lRoad.clone().addScaledVector(bankedSide, kerbW).add(new THREE.Vector3(0, 0.085, 0));
+      const rKerbInner = rRoad.clone();
+      const rKerbOuter = rRoad.clone().addScaledVector(bankedSide, -kerbW).add(new THREE.Vector3(0, 0.085, 0));
 
-      lKerbVerts.push(lRoad.x, lRoad.y + 0.03, lRoad.z, lKerb.x, lKerb.y + 0.09, lKerb.z);
-      rKerbVerts.push(rRoad.x, rRoad.y + 0.03, rRoad.z, rKerb.x, rKerb.y + 0.09, rKerb.z);
+      lKerbVerts.push(
+        lKerbInner.x, lKerbInner.y + 0.02, lKerbInner.z,
+        lKerbOuter.x, lKerbOuter.y, lKerbOuter.z
+      );
+      rKerbVerts.push(
+        rKerbInner.x, rKerbInner.y + 0.02, rKerbInner.z,
+        rKerbOuter.x, rKerbOuter.y, rKerbOuter.z
+      );
 
-      // Alternating red/white kerb coloring
-      const isRed = Math.floor(t * 120) % 2 === 0;
-      const kr = isRed ? 0.95 : 0.98;
-      const kg = isRed ? 0.15 : 0.98;
-      const kb = isRed ? 0.18 : 0.98;
+      // Alternating high-visibility red/white kerb segments
+      const isRed = Math.floor(t * 140) % 2 === 0;
+      const kr = isRed ? 0.94 : 0.98;
+      const kg = isRed ? 0.12 : 0.98;
+      const kb = isRed ? 0.14 : 0.98;
 
       lKerbColors.push(kr, kg, kb, kr, kg, kb);
       rKerbColors.push(kr, kg, kb, kr, kg, kb);
 
-      // Runoff outer edges
-      const lRunoff = lKerb.clone().addScaledVector(bankedSide, runoffW);
-      const rRunoff = rKerb.clone().addScaledVector(bankedSide, -runoffW);
+      // Runoff gravel/AstroTurf
+      const lRunoff = lKerbOuter.clone().addScaledVector(bankedSide, runoffW);
+      const rRunoff = rKerbOuter.clone().addScaledVector(bankedSide, -runoffW);
 
       runoffVerts.push(
-        lKerb.x, lKerb.y + 0.01, lKerb.z, lRunoff.x, lRunoff.y, lRunoff.z,
-        rKerb.x, rKerb.y + 0.01, rKerb.z, rRunoff.x, rRunoff.y, rRunoff.z
+        lKerbOuter.x, lKerbOuter.y, lKerbOuter.z, lRunoff.x, lRunoff.y, lRunoff.z,
+        rKerbOuter.x, rKerbOuter.y, rKerbOuter.z, rRunoff.x, rRunoff.y, rRunoff.z
       );
 
-      // Barrier centerline points
-      leftBarrierPts.push(pt.clone().addScaledVector(bankedSide, barrierOffset).add(new THREE.Vector3(0, 0.45, 0)));
-      rightBarrierPts.push(pt.clone().addScaledVector(bankedSide, -barrierOffset).add(new THREE.Vector3(0, 0.45, 0)));
+      // Armco Guardrail Centerlines
+      leftBarrierPts.push(pt.clone().addScaledVector(bankedSide, barrierOffset).add(new THREE.Vector3(0, 0.52, 0)));
+      rightBarrierPts.push(pt.clone().addScaledVector(bankedSide, -barrierOffset).add(new THREE.Vector3(0, 0.52, 0)));
+
+      // Place 150m / 100m / 50m braking boards approaching heavy braking zones
+      if (Math.abs(curvSign) > 0.08 && i % 38 === 0 && i > 20) {
+        const boardHeading = Math.atan2(tangent.x, tangent.z);
+        const boardOffset = halfW + kerbW + 0.6;
+        const boardPos = pt.clone().addScaledVector(bankedSide, boardOffset);
+        boards.push({
+          pos: [boardPos.x, boardPos.y + 1.1, boardPos.z],
+          rot: boardHeading,
+          text: i % 2 === 0 ? "100" : "50"
+        });
+
+        // Add protective tire barrier stacks along deep runoff outer edges
+        const tirePos = pt.clone().addScaledVector(bankedSide, barrierOffset - 0.7);
+        tireStacks.push({
+          pos: [tirePos.x, tirePos.y + 0.35, tirePos.z],
+          rot: boardHeading
+        });
+      }
 
       if (i < segments) {
         const a = i * 2;
@@ -111,7 +195,7 @@ export function TrackSceneGeometry({ track, curve }: TrackGeneratorProps) {
         // Kerb quads
         kerbIndices.push(a, a + 1, a + 2, a + 1, a + 3, a + 2);
 
-        // Runoff quads (4 vertices per segment)
+        // Runoff quads
         const ra = i * 4;
         runoffIndices.push(ra, ra + 1, ra + 4, ra + 1, ra + 5, ra + 4);
         runoffIndices.push(ra + 2, ra + 3, ra + 6, ra + 3, ra + 7, ra + 6);
@@ -145,16 +229,15 @@ export function TrackSceneGeometry({ track, curve }: TrackGeneratorProps) {
     runoff.setIndex(runoffIndices);
     runoff.computeVertexNormals();
 
-    // Barrier tube geometries
+    // Armco barrier tubes
     const lBarrierCurve = new THREE.CatmullRomCurve3(leftBarrierPts, true);
     const rBarrierCurve = new THREE.CatmullRomCurve3(rightBarrierPts, true);
-    const lBarrierGeo = new THREE.TubeGeometry(lBarrierCurve, segments, 0.22, 6, true);
-    const rBarrierGeo = new THREE.TubeGeometry(rBarrierCurve, segments, 0.22, 6, true);
+    const lBarrierGeo = new THREE.TubeGeometry(lBarrierCurve, segments, 0.24, 6, true);
+    const rBarrierGeo = new THREE.TubeGeometry(rBarrierCurve, segments, 0.24, 6, true);
 
-    // Start / Finish Gantry arch
+    // Start / Finish Gantry
     const startPt = curve.getPointAt(0);
     const startTan = curve.getTangentAt(0).normalize();
-    const startSide = new THREE.Vector3().crossVectors(startTan, upVector).normalize();
 
     return {
       roadGeometry: road,
@@ -166,77 +249,112 @@ export function TrackSceneGeometry({ track, curve }: TrackGeneratorProps) {
       startFinishGantry: {
         position: [startPt.x, startPt.y, startPt.z] as [number, number, number],
         quaternion: new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, 1), startTan),
-        span: halfW * 2 + 5.0
-      }
+        span: halfW * 2 + 5.2
+      },
+      brakingBoards: boards,
+      tireBarriers: tireStacks
     };
   }, [curve, track.width]);
 
-  // Materials
+  // Materials with PBR procedural texture
   const materials = useMemo(() => {
+    const asphaltTex = createAsphaltTexture();
+
     return {
       road: new THREE.MeshStandardMaterial({
-        color: "#282a2e",
-        roughness: 0.88,
-        metalness: 0.08,
+        color: "#ffffff",
+        map: asphaltTex || undefined,
+        roughness: 0.85,
+        metalness: 0.12,
         side: THREE.DoubleSide
       }),
       kerb: new THREE.MeshStandardMaterial({
         vertexColors: true,
-        roughness: 0.75,
-        metalness: 0.15,
+        roughness: 0.72,
+        metalness: 0.18,
         side: THREE.DoubleSide
       }),
       runoff: new THREE.MeshStandardMaterial({
-        color: "#1e3822",
-        roughness: 0.95,
+        color: "#1d3822", // Synthetic AstroTurf
+        roughness: 0.96,
         side: THREE.DoubleSide
       }),
       barrier: new THREE.MeshStandardMaterial({
-        color: "#e2e6ea",
-        roughness: 0.45,
-        metalness: 0.65
+        color: "#dce1e6",
+        roughness: 0.38,
+        metalness: 0.75
       }),
       gantry: new THREE.MeshStandardMaterial({
-        color: "#181a1d",
-        roughness: 0.5,
-        metalness: 0.8
+        color: "#181a1e",
+        roughness: 0.48,
+        metalness: 0.82
+      }),
+      board: new THREE.MeshStandardMaterial({
+        color: "#0f172a",
+        roughness: 0.3,
+        metalness: 0.5
+      }),
+      tireBarrier: new THREE.MeshStandardMaterial({
+        color: "#e11d48", // Safety red tire packs
+        roughness: 0.92,
+        metalness: 0.05
       })
     };
   }, []);
 
   return (
     <group>
-      {/* Surrounding terrain ground plane */}
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.28, 0]} receiveShadow>
-        <planeGeometry args={[1400, 1400]} />
+      {/* Expansive terrain ground plane */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.32, 0]} receiveShadow>
+        <planeGeometry args={[1600, 1600]} />
         <meshStandardMaterial color={track.groundColor} roughness={0.98} />
       </mesh>
 
-      {/* Main Asphalt Road */}
+      {/* Main Asphalt Road with Procedural Rubber & Grain */}
       <mesh geometry={roadGeometry} material={materials.road} receiveShadow />
 
-      {/* Curbs / Kerbs */}
+      {/* 3D Chamfered Sawtooth Kerbs */}
       <mesh geometry={leftKerbGeometry} material={materials.kerb} receiveShadow />
       <mesh geometry={rightKerbGeometry} material={materials.kerb} receiveShadow />
 
-      {/* Runoff Grass / AstroTurf */}
+      {/* Runoff Synthetic AstroTurf */}
       <mesh geometry={runoffGeometry} material={materials.runoff} receiveShadow />
 
-      {/* Outer Armco Barriers */}
+      {/* Outer Steel Armco Barriers */}
       <mesh geometry={leftBarrierGeometry} material={materials.barrier} castShadow receiveShadow />
       <mesh geometry={rightBarrierGeometry} material={materials.barrier} castShadow receiveShadow />
 
+      {/* 150m / 100m / 50m Distance Boards */}
+      {brakingBoards.map((b, idx) => (
+        <group key={idx} position={b.pos} rotation={[0, b.rot, 0]}>
+          {/* Post */}
+          <mesh position={[0, -0.5, 0]} material={materials.gantry}>
+            <cylinderGeometry args={[0.04, 0.04, 1.2, 8]} />
+          </mesh>
+          {/* Board Face */}
+          <mesh material={materials.board} castShadow>
+            <boxGeometry args={[0.9, 0.55, 0.06]} />
+          </mesh>
+        </group>
+      ))}
+
+      {/* Stacked Safety Tire Barriers */}
+      {tireBarriers.map((tb, idx) => (
+        <group key={idx} position={tb.pos} rotation={[0, tb.rot, 0]}>
+          <mesh material={materials.tireBarrier} castShadow>
+            <cylinderGeometry args={[0.38, 0.38, 0.65, 12]} />
+          </mesh>
+        </group>
+      ))}
+
       {/* Start / Finish Gantry Arch */}
       <group position={startFinishGantry.position} quaternion={startFinishGantry.quaternion}>
-        {/* Left post */}
         <mesh position={[-startFinishGantry.span / 2, 3.8, 0]} material={materials.gantry}>
           <cylinderGeometry args={[0.22, 0.22, 7.6, 12]} />
         </mesh>
-        {/* Right post */}
         <mesh position={[startFinishGantry.span / 2, 3.8, 0]} material={materials.gantry}>
           <cylinderGeometry args={[0.22, 0.22, 7.6, 12]} />
         </mesh>
-        {/* Overhead beam */}
         <mesh position={[0, 7.4, 0]} material={materials.gantry}>
           <boxGeometry args={[startFinishGantry.span, 0.65, 0.8]} />
         </mesh>
@@ -253,10 +371,10 @@ export function TrackSceneGeometry({ track, curve }: TrackGeneratorProps) {
             </mesh>
           </group>
         ))}
-        {/* Checkered Start/Finish Line on Track */}
+        {/* Checkered Start/Finish Grid Slot on Track */}
         <mesh position={[0, 0.04, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-          <planeGeometry args={[track.width, 1.6]} />
-          <meshBasicMaterial color="#f8f9fa" />
+          <planeGeometry args={[track.width, 1.8]} />
+          <meshBasicMaterial color="#f8fafc" />
         </mesh>
       </group>
     </group>

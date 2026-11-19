@@ -30,7 +30,11 @@ const defaultTelemetry: TelemetryData = {
   onKerb: false,
   offTrack: false,
   gForceLat: 0,
-  gForceLong: 0
+  gForceLong: 0,
+  brakeTemp: 100,
+  isLockup: false,
+  tireSlip: 0,
+  suspensionOffsets: [0, 0, 0, 0]
 };
 
 // -----------------------------------------------------------------------------
@@ -72,7 +76,11 @@ function Driver({
     steerAngle: 0,
     speed: 0,
     isBraking: false,
-    drsActive: false
+    drsActive: false,
+    brakeTemp: 100,
+    isLockup: false,
+    tireSlip: 0,
+    suspensionOffsets: [0, 0, 0, 0] as [number, number, number, number]
   });
 
   // Track start position
@@ -140,7 +148,11 @@ function Driver({
       steerAngle: physics.current.steerAngle,
       speed: physics.current.speed,
       isBraking: inputs.brake,
-      drsActive: physics.current.drsActive
+      drsActive: physics.current.drsActive,
+      brakeTemp: telemetry.brakeTemp,
+      isLockup: telemetry.isLockup,
+      tireSlip: telemetry.tireSlip,
+      suspensionOffsets: telemetry.suspensionOffsets
     });
 
     // 4. Update Engine Sound Audio
@@ -215,6 +227,10 @@ function Driver({
           speed={carRenderProps.speed}
           isBraking={carRenderProps.isBraking}
           drsActive={carRenderProps.drsActive}
+          brakeTemp={carRenderProps.brakeTemp}
+          isLockup={carRenderProps.isLockup}
+          tireSlip={carRenderProps.tireSlip}
+          suspensionOffsets={carRenderProps.suspensionOffsets}
         />
       </group>
     </>
@@ -353,9 +369,18 @@ export default function RacingGame() {
 
   return (
     <div className="game">
-      {/* 3D WebGL Canvas */}
-      <Canvas shadows dpr={[1, 1.6]}>
+      {/* 3D WebGL Canvas with ACES Tone Mapping & Atmospheric Fog */}
+      <Canvas
+        shadows
+        dpr={[1, 1.6]}
+        gl={{
+          antialias: true,
+          toneMapping: THREE.ACESFilmicToneMapping,
+          toneMappingExposure: 1.12
+        }}
+      >
         <color attach="background" args={[track.skyColor]} />
+        <fogExp2 attach="fog" color={track.skyColor} density={0.0014} />
         <Sky sunPosition={[120, 45, 100]} />
         <ambientLight intensity={0.7} />
         <directionalLight

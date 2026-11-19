@@ -107,6 +107,7 @@ export function RacingHUD({
           </div>
         </div>
         <div className="f1-status-flags">
+          {telemetry.isLockup && <span className="flag lockup">TYRE LOCKUP</span>}
           {telemetry.offTrack && <span className="flag off-track">OFF TRACK WARNING</span>}
           {telemetry.onKerb && <span className="flag kerb">KERB RUMBLE</span>}
           {telemetry.drsActive && <span className="flag drs-active">DRS ENABLED</span>}
@@ -201,6 +202,12 @@ export function RacingHUD({
                 </span>
               ))}
             </div>
+          </div>
+          <div className="card-row">
+            <span className="lbl">BRAKES</span>
+            <span className={`val mono ${telemetry.brakeTemp > 700 ? "brake-hot" : telemetry.brakeTemp > 450 ? "brake-warm" : "brake-optimal"}`}>
+              {telemetry.brakeTemp}°C
+            </span>
           </div>
           <div className="card-row g-forces">
             <span>LAT: <b>{telemetry.gForceLat}G</b></span>

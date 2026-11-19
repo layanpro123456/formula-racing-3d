@@ -1,8 +1,19 @@
 // Formula Racing 3D — Real-World Motorsport Vehicle Physics Engine
 // 4-wheel dynamic load transfer, Pacejka slip friction, brake thermal model, and barrier impulse deflection.
+// Built natively for Babylon.js with zero Three.js dependencies.
 
-import * as THREE from "three";
+import { Vector3 } from "@babylonjs/core";
 import { Track } from "@/data/tracks";
+import { Spline3D } from "@/lib/math/Spline3D";
+
+function clamp(val: number, min: number, max: number): number {
+  if (!Number.isFinite(val)) return min;
+  return Math.max(min, Math.min(max, val));
+}
+
+function lerp(a: number, b: number, t: number): number {
+  return a + (b - a) * t;
+}
 
 export interface VehicleInputs {
   accelerate: boolean;
@@ -35,11 +46,11 @@ export interface TelemetryData {
 
 export class VehiclePhysics {
   // Physical states
-  public position: THREE.Vector3 = new THREE.Vector3();
-  public velocity: THREE.Vector3 = new THREE.Vector3();
-  public forward: THREE.Vector3 = new THREE.Vector3(0, 0, 1);
-  public right: THREE.Vector3 = new THREE.Vector3(1, 0, 0);
-  public up: THREE.Vector3 = new THREE.Vector3(0, 1, 0);
+  public position: Vector3 = new Vector3();
+  public velocity: Vector3 = new Vector3();
+  public forward: Vector3 = new Vector3(0, 0, 1);
+  public right: Vector3 = new Vector3(1, 0, 0);
+  public up: Vector3 = new Vector3(0, 1, 0);
   
   public heading: number = 0;
   public speed: number = 0;           // m/s
@@ -74,10 +85,10 @@ export class VehiclePhysics {
   public suspensionOffsets: [number, number, number, number] = [0, 0, 0, 0];
 
   // Pre-allocated scratch vectors to prevent frame allocations
-  private _scratchVec = new THREE.Vector3();
-  private _scratchSide = new THREE.Vector3();
-  private _splinePt = new THREE.Vector3();
-  private _splineTangent = new THREE.Vector3();
+  private _scratchVec = new Vector3();
+  private _scratchSide = new Vector3();
+  private _splinePt = new Vector3();
+  private _splineTangent = new Vector3(0, 0, 1);
 
   // F1 Vehicle Physical Constants
   private readonly mass = 798;          // kg (FIA minimum weight)
@@ -89,8 +100,8 @@ export class VehiclePhysics {
   // Gear ratios (8 forward gears)
   private readonly gearMaxSpeeds = [0, 22, 35, 48, 62, 74, 84, 93, 102]; // m/s (up to ~365 km/h)
 
-  public reset(startPos: THREE.Vector3, startHeading: number) {
-    this.position.copy(startPos);
+  public reset(startPos: Vector3, startHeading: number) {
+    this.position.copyFrom(startPos);
     if (!Number.isFinite(this.position.x) || !Number.isFinite(this.position.y) || !Number.isFinite(this.position.z)) {
       this.position.set(0, 0, 0);
     }
@@ -117,7 +128,7 @@ export class VehiclePhysics {
     dt: number,
     inputs: VehicleInputs,
     track: Track,
-    spline: THREE.CatmullRomCurve3
+    spline: Spline3D
   ): TelemetryData {
     // 0. Defensive runtime guard on time-delta and all internal states
     const safeDt = Number.isFinite(dt) && dt > 0 ? Math.min(dt, 0.05) : 0.016;
@@ -135,7 +146,7 @@ export class VehiclePhysics {
     const steerTarget = (inputs.steerLeft ? 1 : 0) - (inputs.steerRight ? 1 : 0);
     // At 300+ km/h, aero stability restricts high steering angles to avoid snap spins
     const maxSteer = 0.52 / (1.0 + Math.abs(this.speed) * 0.038);
-    this.steerAngle = THREE.MathUtils.lerp(this.steerAngle, steerTarget * maxSteer, safeDt * 11);
+    this.steerAngle = lerp(this.steerAngle, steerTarget * maxSteer, safeDt * 11);
 
     // 2. Query Track Spline Position & Surface Contact
     this.queryTrackPosition(spline, track);
@@ -210,15 +221,19 @@ export class VehiclePhysics {
         // Brake disc thermal absorption: energy dissipated into heat
         const heatGen = (Math.max(0, this.speed) * 12.0) * safeDt;
         this.brakeTemp = Math.min(950, this.brakeTemp + heatGen);
+      } else if (this.speed > 0.05) {
+        // Coming to a complete stop
+        this.speed = 0;
+        brakeForce = 35;
       } else {
-        // Reverse gear
-        accelForce = -12 * frictionMu;
+        // Reverse gear from standstill
+        accelForce = -9 * frictionMu;
       }
     }
 
     // Cooling of brake discs via ram-air ducts (exponential decay towards 100 C)
     const coolingRate = 1.6 + (Math.max(0, this.speed) / 24);
-    this.brakeTemp = Math.max(100, THREE.MathUtils.lerp(this.brakeTemp, 100, safeDt * coolingRate));
+    this.brakeTemp = Math.max(100, lerp(this.brakeTemp, 100, safeDt * coolingRate));
     if (!Number.isFinite(this.brakeTemp)) this.brakeTemp = 100;
 
     // Rolling resistance & Net longitudinal acceleration
@@ -252,17 +267,19 @@ export class VehiclePhysics {
       }
     }
 
-    this.speed = THREE.MathUtils.clamp(this.speed, -15, 101); // Top speed ~364 km/h
+    this.speed = clamp(this.speed, -15, 101); // Top speed ~364 km/h
     if (!Number.isFinite(this.speed)) this.speed = 0;
 
     this.gForceLong = safeDt > 0.0001 ? (this.speed - prevSpeed) / (safeDt * this.g) : 0;
     if (!Number.isFinite(this.gForceLong)) this.gForceLong = 0;
 
     // 8. Lateral Dynamics & Pacejka-Inspired Cornering
-    // Slip angle alpha = steerAngle - (lateralVelocity / longitudinalVelocity)
-    const turnRate = this.steerAngle * (1.15 + Math.abs(this.speed) * 0.024);
+    const turnRate = this.steerAngle * (1.35 + Math.abs(this.speed) * 0.024);
     if (Math.abs(this.speed) > 0.1) {
       this.heading += turnRate * safeDt * (this.speed >= 0 ? 1 : -1);
+    } else if (inputs.accelerate || inputs.brake || Math.abs(this.steerAngle) > 0.05) {
+      // Low-speed breakaway steering to recover from barrier contact or hairpin spin
+      this.heading += this.steerAngle * 2.4 * safeDt * (inputs.brake ? -1 : 1);
     }
     if (!Number.isFinite(this.heading)) this.heading = 0;
 
@@ -271,41 +288,47 @@ export class VehiclePhysics {
 
     // Tire slip intensity for audio and smoke effects
     const latSlip = Math.abs(this.steerAngle) * (Math.abs(this.speed) / 50);
-    this.tireSlip = THREE.MathUtils.clamp(this.isLockup ? 1.0 : latSlip, 0, 1);
+    this.tireSlip = clamp(this.isLockup ? 1.0 : latSlip, 0, 1);
 
     // Forward and Right vectors
     this.forward.set(Math.sin(this.heading), 0, Math.cos(this.heading)).normalize();
     this.right.set(this.forward.z, 0, -this.forward.x).normalize();
 
     // 9. Integrate Position
-    this._scratchVec.copy(this.forward).multiplyScalar(this.speed * safeDt);
-    this.position.add(this._scratchVec);
+    this._scratchVec.copyFrom(this.forward).scaleInPlace(this.speed * safeDt);
+    this.position.addInPlace(this._scratchVec);
+
+    // Advance approximate curve progress based on forward motion
+    if (Math.abs(this.speed) > 0.01) {
+      const approxTrackLen = spline.getLength() || 3500;
+      this.currentT = ((this.currentT + (this.speed * safeDt) / approxTrackLen) % 1 + 1) % 1;
+    }
 
     // Ground elevation clamping along track
     if (Number.isFinite(this._splinePt.y)) {
-      this.position.y = THREE.MathUtils.lerp(this.position.y, this._splinePt.y, safeDt * 9);
+      this.position.y = lerp(this.position.y, this._splinePt.y, safeDt * 9);
     }
 
     if (!Number.isFinite(this.position.x) || !Number.isFinite(this.position.y) || !Number.isFinite(this.position.z)) {
-      this.position.copy(this._splinePt);
+      this.position.copyFrom(this._splinePt);
     }
 
     // 10. Elastic-Plastic Barrier Collision Response
-    this.resolveBarrierCollisions(track);
+    this.resolveBarrierCollisions(track, safeDt);
 
     // Defensive check after barrier collision
     if (!Number.isFinite(this.heading)) this.heading = 0;
     if (!Number.isFinite(this.speed)) this.speed = 0;
     if (!Number.isFinite(this.position.x) || !Number.isFinite(this.position.y) || !Number.isFinite(this.position.z)) {
-      this.position.copy(this._splinePt);
+      this.position.copyFrom(this._splinePt);
     }
 
     // 11. Gear & RPM Calculation
     this.updateGearsAndRPM();
 
     // 12. Visual Suspension Roll, Pitch & 4-Wheel Deflections
-    this.pitch = THREE.MathUtils.lerp(this.pitch, -this.gForceLong * 0.038, safeDt * 10);
-    this.roll = THREE.MathUtils.lerp(this.roll, this.gForceLat * 0.032, safeDt * 10);
+    this.pitch = lerp(this.pitch, -this.gForceLong * 0.038, safeDt * 10);
+    this.roll = lerp(this.roll, this.gForceLat * 0.032, safeDt * 10);
     if (!Number.isFinite(this.pitch)) this.pitch = 0;
     if (!Number.isFinite(this.roll)) this.roll = 0;
 
@@ -320,10 +343,10 @@ export class VehiclePhysics {
       this.pitch * 0.4 - this.roll * 0.3
     ];
     this.suspensionOffsets = [
-      THREE.MathUtils.clamp(Number.isFinite(rawOffsets[0]) ? rawOffsets[0] : 0, -0.06, 0.06),
-      THREE.MathUtils.clamp(Number.isFinite(rawOffsets[1]) ? rawOffsets[1] : 0, -0.06, 0.06),
-      THREE.MathUtils.clamp(Number.isFinite(rawOffsets[2]) ? rawOffsets[2] : 0, -0.06, 0.06),
-      THREE.MathUtils.clamp(Number.isFinite(rawOffsets[3]) ? rawOffsets[3] : 0, -0.06, 0.06)
+      clamp(Number.isFinite(rawOffsets[0]) ? rawOffsets[0] : 0, -0.06, 0.06),
+      clamp(Number.isFinite(rawOffsets[1]) ? rawOffsets[1] : 0, -0.06, 0.06),
+      clamp(Number.isFinite(rawOffsets[2]) ? rawOffsets[2] : 0, -0.06, 0.06),
+      clamp(Number.isFinite(rawOffsets[3]) ? rawOffsets[3] : 0, -0.06, 0.06)
     ];
 
     // 13. Lap Timer & Sector Detection
@@ -342,7 +365,7 @@ export class VehiclePhysics {
       speedMs: safeSpeedVal,
       gear: Number.isFinite(this.gear) ? this.gear : 1,
       rpm: Math.round(safeRpmVal),
-      rpmRatio: THREE.MathUtils.clamp((safeRpmVal - 4000) / (12500 - 4000), 0, 1),
+      rpmRatio: clamp((safeRpmVal - 4000) / (12500 - 4000), 0, 1),
       lapTime: Number.isFinite(this.lapTime) ? this.lapTime : 0,
       currentSector: (this.currentSector === 1 || this.currentSector === 2 || this.currentSector === 3) ? this.currentSector : 1,
       lastSectorTime: Number.isFinite(this.lastSectorTime) ? this.lastSectorTime : 0,
@@ -359,34 +382,56 @@ export class VehiclePhysics {
     };
   }
 
-  private queryTrackPosition(spline: THREE.CatmullRomCurve3, track: Track) {
-    let bestT = Number.isFinite(this.currentT) ? this.currentT : 0;
+  private queryTrackPosition(spline: Spline3D, track: Track) {
+    const centerT = Number.isFinite(this.currentT) ? this.currentT : 0;
+    let bestT = centerT;
     let minDistSq = Infinity;
-    const searchRange = 0.08;
-    const samples = 18;
+    const searchRangeT = 0.02;
+    const samples = 24;
 
     for (let i = 0; i <= samples; i++) {
-      let rawT = bestT - searchRange / 2 + (i / samples) * searchRange;
+      const rawT = centerT - searchRangeT / 2 + (i / samples) * searchRangeT;
       const t = Math.max(0, Math.min(0.999999, ((rawT % 1) + 1) % 1));
       
       const pt = spline.getPointAt(t);
       if (!pt || !Number.isFinite(pt.x) || !Number.isFinite(pt.z)) continue;
 
-      const dSq = pt.distanceToSquared(this.position);
+      const dSq = Vector3.DistanceSquared(pt, this.position);
       if (Number.isFinite(dSq) && dSq < minDistSq) {
         minDistSq = dSq;
         bestT = t;
       }
     }
 
+    // Binary refinement for millimeter precision tracking (<0.05m error)
+    let step = (searchRangeT / samples) * 0.5;
+    for (let iter = 0; iter < 4; iter++) {
+      const tMinus = Math.max(0, Math.min(0.999999, (((bestT - step) % 1) + 1) % 1));
+      const tPlus = Math.max(0, Math.min(0.999999, (((bestT + step) % 1) + 1) % 1));
+      const ptMinus = spline.getPointAt(tMinus);
+      const ptPlus = spline.getPointAt(tPlus);
+      if (ptMinus && ptPlus) {
+        const dMinus = Vector3.DistanceSquared(ptMinus, this.position);
+        const dPlus = Vector3.DistanceSquared(ptPlus, this.position);
+        if (dMinus < minDistSq) {
+          minDistSq = dMinus;
+          bestT = tMinus;
+        } else if (dPlus < minDistSq) {
+          minDistSq = dPlus;
+          bestT = tPlus;
+        }
+      }
+      step *= 0.5;
+    }
+
     this.currentT = Math.max(0, Math.min(0.999999, ((bestT % 1) + 1) % 1));
     const pt = spline.getPointAt(this.currentT);
     if (pt && Number.isFinite(pt.x) && Number.isFinite(pt.y) && Number.isFinite(pt.z)) {
-      this._splinePt.copy(pt);
+      this._splinePt.copyFrom(pt);
     }
     const rawTan = spline.getTangentAt(this.currentT);
-    if (rawTan && Number.isFinite(rawTan.x) && Number.isFinite(rawTan.z) && rawTan.lengthSq() > 0.0001) {
-      this._splineTangent.copy(rawTan).normalize();
+    if (rawTan && Number.isFinite(rawTan.x) && Number.isFinite(rawTan.z) && rawTan.lengthSquared() > 0.0001) {
+      this._splineTangent.copyFrom(rawTan).normalize();
     }
 
     // Distance to spline center
@@ -431,28 +476,29 @@ export class VehiclePhysics {
     this.drsActive = this.drsAvailable && !!drsRequested;
   }
 
-  private resolveBarrierCollisions(track: Track) {
+  private resolveBarrierCollisions(track: Track, dt: number) {
     const safeTrackW = Number.isFinite(track.width) && track.width > 0 ? track.width : 6.8;
-    const maxOffset = safeTrackW * 0.5 + 3.25;
-    this._scratchSide.subVectors(this.position, this._splinePt);
+    const maxOffset = safeTrackW * 0.5 + 3.8;
+    this._scratchSide.copyFrom(this.position).subtractInPlace(this._splinePt);
     this._scratchSide.y = 0;
     const distFromCenter = this._scratchSide.length();
 
     if (distFromCenter > maxOffset && distFromCenter > 0.001) {
-      // Elastic-Plastic impact with Armco Guardrail
       this._scratchSide.normalize();
       
-      // Deflect car back inside track boundary
-      this.position.x = this._splinePt.x + this._scratchSide.x * maxOffset;
-      this.position.z = this._splinePt.z + this._scratchSide.z * maxOffset;
+      // Deflect car back inside track boundary with 0.15m safety clearance
+      this.position.x = this._splinePt.x + this._scratchSide.x * (maxOffset - 0.15);
+      this.position.z = this._splinePt.z + this._scratchSide.z * (maxOffset - 0.15);
 
-      // Realistic speed scrub (62% kinetic energy absorbed into steel barrier crumple)
-      this.speed *= 0.58;
+      // Realistic wall friction deceleration only at speed (does not trap stopped car)
+      if (Math.abs(this.speed) > 2.0) {
+        this.speed = Math.max(0, this.speed - 28 * dt);
+      }
 
-      // Deflect heading slightly along tangent to prevent dead sticking into wall
+      // Deflect heading slightly along tangent to slide smoothly along barrier
       const tanHeading = Math.atan2(this._splineTangent.x, this._splineTangent.z);
       if (Number.isFinite(tanHeading)) {
-        this.heading = THREE.MathUtils.lerp(this.heading, tanHeading, 0.45);
+        this.heading = lerp(this.heading, tanHeading, dt * 8);
       }
     }
   }

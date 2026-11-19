@@ -9,7 +9,7 @@ import {
   Mesh,
   Space
 } from "@babylonjs/core";
-import { LIVERIES } from "@/components/FormulaCarModel";
+import { LIVERIES } from "@/data/liveries";
 
 export class BabylonVehicle {
   public root: TransformNode;

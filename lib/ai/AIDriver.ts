@@ -1,15 +1,26 @@
 // Formula Racing 3D — Autonomous AI Driver & Grid Simulator
 // Real-time spline pathfinding, curvature-based speed profiling, and local avoidance.
+// Built natively for Babylon.js with zero Three.js dependencies.
 
-import * as THREE from "three";
+import { Vector3 } from "@babylonjs/core";
 import { Track } from "@/data/tracks";
+import { Spline3D } from "@/lib/math/Spline3D";
+
+function clamp(val: number, min: number, max: number): number {
+  if (!Number.isFinite(val)) return min;
+  return Math.max(min, Math.min(max, val));
+}
+
+function lerp(a: number, b: number, t: number): number {
+  return a + (b - a) * t;
+}
 
 export interface AICarState {
   id: string;
   name: string;
   number: number;
   liveryIndex: number;
-  position: THREE.Vector3;
+  position: Vector3;
   heading: number;
   speed: number;       // m/s
   steerAngle: number;
@@ -31,13 +42,13 @@ export const AI_ROSTER = [
 
 export class AISimulator {
   public cars: AICarState[] = [];
-  private _up = new THREE.Vector3(0, 1, 0);
-  private _scratchVec = new THREE.Vector3();
-  private _scratchTan = new THREE.Vector3();
-  private _scratchSide = new THREE.Vector3();
-  private _scratchTarget = new THREE.Vector3();
+  private _up = new Vector3(0, 1, 0);
+  private _scratchVec = new Vector3();
+  private _scratchTan = new Vector3();
+  private _scratchSide = new Vector3();
+  private _scratchTarget = new Vector3();
 
-  public initializeGrid(track: Track, spline: THREE.CatmullRomCurve3) {
+  public initializeGrid(track: Track, spline: Spline3D) {
     this.cars = AI_ROSTER.map((driver, index) => {
       // Staggered grid starting positions behind the start line (negative t offset)
       // Row 1 (P2), Row 2 (P3, P4), Row 3 (P5, P6)
@@ -46,15 +57,15 @@ export class AISimulator {
       const tStart = Math.max(0, Math.min(0.999999, ((rawT % 1) + 1) % 1));
       const startPt = spline.getPointAt(tStart);
       const rawTan = spline.getTangentAt(tStart);
-      const tangent = (rawTan && rawTan.lengthSq() > 0.0001) ? rawTan.normalize() : new THREE.Vector3(0, 0, 1);
+      const tangent = (rawTan && rawTan.lengthSquared() > 0.0001) ? rawTan.normalize() : new Vector3(0, 0, 1);
       const heading = Math.atan2(tangent.x, tangent.z);
 
       // Stagger left and right on grid boxes
       const isLeft = gridSlot % 2 === 1;
       const lateral = (isLeft ? -1.8 : 1.8);
 
-      const side = new THREE.Vector3().crossVectors(tangent, this._up).normalize();
-      const pos = startPt.clone().addScaledVector(side, lateral);
+      const side = Vector3.Cross(tangent, this._up).normalize();
+      const pos = startPt.clone().addInPlace(side.scale(lateral));
 
       return {
         id: `ai-${driver.number}`,
@@ -78,8 +89,8 @@ export class AISimulator {
   public update(
     dt: number,
     track: Track,
-    spline: THREE.CatmullRomCurve3,
-    playerPosition: THREE.Vector3,
+    spline: Spline3D,
+    playerPosition: Vector3,
     raceStarted: boolean
   ) {
     if (!raceStarted) return;
@@ -101,20 +112,19 @@ export class AISimulator {
       const lookaheadT = Math.max(0, Math.min(0.999999, (((safeT + 0.02) % 1) + 1) % 1));
       
       const currentPt = spline.getPointAt(safeT);
-      const lookaheadPt = spline.getPointAt(lookaheadT);
       
       const rawCurrentTan = spline.getTangentAt(safeT);
-      const currentTan = (rawCurrentTan && rawCurrentTan.lengthSq() > 0.0001)
-        ? this._scratchTan.copy(rawCurrentTan).normalize()
+      const currentTan = (rawCurrentTan && rawCurrentTan.lengthSquared() > 0.0001)
+        ? this._scratchTan.copyFrom(rawCurrentTan).normalize()
         : this._scratchTan.set(0, 0, 1);
 
       const rawLookaheadTan = spline.getTangentAt(lookaheadT);
-      const lookaheadTan = (rawLookaheadTan && rawLookaheadTan.lengthSq() > 0.0001)
+      const lookaheadTan = (rawLookaheadTan && rawLookaheadTan.lengthSquared() > 0.0001)
         ? rawLookaheadTan.normalize()
         : currentTan;
 
       // 2. Curvature detection for speed profiling (brake before tight turns)
-      const dot = THREE.MathUtils.clamp(currentTan.dot(lookaheadTan), -1, 1);
+      const dot = clamp(Vector3.Dot(currentTan, lookaheadTan), -1, 1);
       const curvature = 1.0 - dot; // 0 = straight, >0.1 = sharp turn
       const baseTopSpeed = 86 * driverProfile.skill; // ~310 km/h
       const cornerMaxSpeed = Math.max(28, baseTopSpeed - curvature * 320);
@@ -146,11 +156,12 @@ export class AISimulator {
 
       // 5. Lateral Racing Line & Local Avoidance
       // Side vector perpendicular to track
-      this._scratchSide.crossVectors(currentTan, this._up).normalize();
+      Vector3.CrossToRef(currentTan, this._up, this._scratchSide);
+      this._scratchSide.normalize();
 
       // Avoid player car if close ahead
       const distToPlayer = (playerPosition && Number.isFinite(playerPosition.x))
-        ? car.position.distanceTo(playerPosition)
+        ? Vector3.Distance(car.position, playerPosition)
         : 999;
       if (distToPlayer < 7.0) {
         // Player is nearby! Swerve slightly or brake to avoid reckless ramming
@@ -158,21 +169,21 @@ export class AISimulator {
       }
 
       // Compute target 3D world position on spline with lateral offset (zero allocations)
-      this._scratchTarget.copy(currentPt).addScaledVector(this._scratchSide, car.lateralOffset);
+      this._scratchTarget.copyFrom(currentPt).addInPlace(this._scratchSide.scale(car.lateralOffset));
 
       // Steer heading towards target
-      this._scratchVec.subVectors(this._scratchTarget, car.position);
+      this._scratchVec.copyFrom(this._scratchTarget).subtractInPlace(car.position);
       const targetHeading = Math.atan2(currentTan.x, currentTan.z);
       
       if (Number.isFinite(targetHeading)) {
-        car.heading = THREE.MathUtils.lerp(car.heading, targetHeading, safeDt * 6);
+        car.heading = lerp(car.heading, targetHeading, safeDt * 6);
       }
-      car.position.lerp(this._scratchTarget, safeDt * 10);
+      Vector3.LerpToRef(car.position, this._scratchTarget, safeDt * 10, car.position);
       car.position.y = currentPt.y;
 
       // Sanitization on position
       if (!Number.isFinite(car.position.x) || !Number.isFinite(car.position.y) || !Number.isFinite(car.position.z)) {
-        car.position.copy(currentPt);
+        car.position.copyFrom(currentPt);
       }
 
       // Steering angle

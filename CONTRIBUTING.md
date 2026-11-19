@@ -29,22 +29,22 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 - No implicit or explicit `any` types unless interfacing with low-level untyped WebGL extensions.
 - Run `npm run build` and `npm run lint` before committing to ensure there are no compilation or lint errors.
 
-### React Three Fiber Best Practices
-- **Never allocate new objects inside `useFrame`**:
+### Babylon.js Best Practices
+- **Never allocate new objects inside the render loop**:
   ```ts
-  // ❌ Bad: Triggers garbage collection pauses every few seconds
-  useFrame(() => {
-    const forward = new THREE.Vector3(0, 0, 1);
+  // Bad: Triggers garbage collection pauses every few seconds
+  engine.runRenderLoop(() => {
+    const forward = new Vector3(0, 0, 1);
   });
 
-  // ✅ Good: Reuse allocated vector instance
-  const forward = useRef(new THREE.Vector3());
-  useFrame(() => {
-    forward.current.set(0, 0, 1);
+  // Good: Reuse pre-allocated scratch vector
+  const forward = new Vector3(0, 0, 1);
+  engine.runRenderLoop(() => {
+    forward.set(0, 0, 1);
   });
   ```
-- Keep procedural geometries memoized with `useMemo` so they are not rebuilt on every render.
-- Keep high-frequency state updates inside `useRef` rather than triggering React re-renders every 16ms.
+- Keep procedural ribbons and meshes cached rather than rebuilding on every frame.
+- Keep high-frequency state updates inside mutable handles rather than triggering React re-renders every 16ms.
 
 ### Intellectual Property & Asset Licensing
 - Do not commit copyrighted Formula 1 (F1), FIA, or team logos, commercial liveries, or proprietary track survey data.
@@ -58,4 +58,3 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 2. Implement your changes following [AGENTS.md](file:///c:/Users/layan/Downloads/formula-racing-nextjs-starter/formula-racing-nextjs/AGENTS.md) and [SKILL.md](file:///c:/Users/layan/Downloads/formula-racing-nextjs-starter/formula-racing-nextjs/skills/racing-sim-gameplay/SKILL.md).
 3. Test in the browser across multiple tracks.
 4. Verify build: `npm run build`
-5. Submit a descriptive Pull Request detailing the feature, performance impact, and screenshots/recordings if applicable.

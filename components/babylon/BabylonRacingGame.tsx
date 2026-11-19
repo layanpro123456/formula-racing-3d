@@ -1,7 +1,6 @@
 "use client";
 
-import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
-import * as THREE from "three";
+import React, { useEffect, useRef, useState, useMemo } from "react";
 import {
   Engine,
   Scene,
@@ -10,12 +9,10 @@ import {
   Color4,
   HemisphericLight,
   DirectionalLight,
-  ShadowGenerator,
-  FollowCamera,
   TargetCamera
 } from "@babylonjs/core";
 import { Track } from "@/data/tracks";
-import { build3DCurve } from "@/components/TrackGenerator";
+import { build3DCurve, Spline3D } from "@/lib/math/Spline3D";
 import { createBabylonTrack } from "./BabylonTrackGenerator";
 import { BabylonVehicle } from "./BabylonVehicle";
 import { getHavokPlugin } from "@/lib/babylon/havokLoader";
@@ -66,7 +63,8 @@ export default function BabylonRacingGame({
   const [totalLaps, setTotalLaps] = useState(sessionMode === "qualifying" ? 1 : track.lapsDefault);
   const [cameraMode, setCameraMode] = useState<CameraMode>("chase");
   const [isAudioMuted, setIsAudioMuted] = useState(false);
-  const [countdown, setCountdown] = useState<number | null>(null);
+  const [countdown, setCountdown] = useState<number | null>(sessionMode === "grandprix" ? 3 : null);
+  const countdownRef = useRef<number | null>(sessionMode === "grandprix" ? 3 : null);
   const [isPaused, setIsPaused] = useState(false);
   const [isFinished, setIsFinished] = useState(false);
 
@@ -76,12 +74,44 @@ export default function BabylonRacingGame({
 
   const spline = useMemo(() => build3DCurve(track.points), [track]);
 
+  // Grand Prix 5-red-lights countdown start sequence
+  useEffect(() => {
+    if (sessionMode === "grandprix") {
+      setCountdown(3);
+      countdownRef.current = 3;
+      engineAudio.playBeep(false);
+
+      let step = 3;
+      const timer = setInterval(() => {
+        step -= 1;
+        if (step > 0) {
+          setCountdown(step);
+          countdownRef.current = step;
+          engineAudio.playBeep(false);
+        } else if (step === 0) {
+          setCountdown(0);
+          countdownRef.current = 0;
+          engineAudio.playBeep(true);
+        } else {
+          clearInterval(timer);
+          setCountdown(null);
+          countdownRef.current = null;
+        }
+      }, 1000);
+      return () => clearInterval(timer);
+    } else {
+      setCountdown(null);
+      countdownRef.current = null;
+    }
+  }, [sessionMode]);
+
   useEffect(() => {
     if (!canvasRef.current) return;
 
     let engine: Engine;
     let scene: Scene;
     let vehicle: BabylonVehicle;
+    const aiVehicles: BabylonVehicle[] = [];
     let isDisposed = false;
 
     const keys: Record<string, boolean> = {};
@@ -127,7 +157,7 @@ export default function BabylonRacingGame({
       // 4. Generate Procedural 3D Banked Track
       createBabylonTrack(track, track.points, scene);
 
-      // 5. Build Formula Car Model
+      // 5. Build Formula Car Model for Player
       vehicle = new BabylonVehicle("playerF1", liveryIndex, scene);
 
       // Camera
@@ -140,7 +170,7 @@ export default function BabylonRacingGame({
       const startHeading = Math.atan2(startTan.x, startTan.z);
 
       physicsRef.current.reset(
-        new THREE.Vector3(startPt.x, startPt.y, startPt.z),
+        startPt,
         startHeading
       );
 
@@ -148,6 +178,14 @@ export default function BabylonRacingGame({
       if (sessionMode === "grandprix") {
         aiSim.initializeGrid(track, spline);
         setAiCars([...aiSim.cars]);
+
+        // Create 3D Babylon vehicle meshes for each AI opponent
+        aiSim.cars.forEach((aiCar) => {
+          const aiVeh = new BabylonVehicle(aiCar.id, aiCar.liveryIndex, scene);
+          aiVeh.root.position.copyFrom(aiCar.position);
+          aiVeh.root.rotation.y = aiCar.heading;
+          aiVehicles.push(aiVeh);
+        });
       }
 
       // Initialize Sound
@@ -166,12 +204,14 @@ export default function BabylonRacingGame({
         const dt = Number.isFinite(rawDt) && rawDt > 0 ? Math.min(rawDt, 0.04) : 0.016;
 
         if (!isPaused && !isFinished) {
+          const isRaceActive = countdownRef.current === null || countdownRef.current === 0;
+
           const inputs: VehicleInputs = {
-            accelerate: !!(keys["w"] || keys["arrowup"]),
-            brake: !!(keys["s"] || keys["arrowdown"]),
+            accelerate: isRaceActive && !!(keys["w"] || keys["arrowup"]),
+            brake: isRaceActive && !!(keys["s"] || keys["arrowdown"]),
             steerLeft: !!(keys["a"] || keys["arrowleft"]),
             steerRight: !!(keys["d"] || keys["arrowright"]),
-            drs: !!(keys["e"] || keys[" "])
+            drs: isRaceActive && !!(keys["e"] || keys[" "])
           };
 
           // Step Physics Engine
@@ -246,8 +286,19 @@ export default function BabylonRacingGame({
           }
           prevT = physicsRef.current.currentT;
 
-          // AI Simulation
-          aiSim.update(dt, track, spline, physicsRef.current.position, true);
+          // AI Simulation & 3D Mesh update
+          if (sessionMode === "grandprix") {
+            aiSim.update(dt, track, spline, physicsRef.current.position, isRaceActive);
+            for (let i = 0; i < aiSim.cars.length; i++) {
+              const aiCar = aiSim.cars[i];
+              const aiMesh = aiVehicles[i];
+              if (aiMesh && aiCar) {
+                aiMesh.root.position.copyFrom(aiCar.position);
+                aiMesh.root.rotation.y = aiCar.heading;
+                aiMesh.update(aiCar.speed, aiCar.steerAngle, dt, false, 150, false);
+              }
+            }
+          }
 
           setTelemetry(tData);
         }
@@ -273,13 +324,14 @@ export default function BabylonRacingGame({
     };
   }, [track, spline, sessionMode, liveryIndex, totalLaps, cameraMode, isPaused, isFinished, aiSim]);
 
-  // Synchronize AI positions periodically
+  // Synchronize AI positions periodically for HUD
   useEffect(() => {
+    if (sessionMode !== "grandprix") return;
     const interval = setInterval(() => {
       setAiCars([...aiSim.cars]);
     }, 120);
     return () => clearInterval(interval);
-  }, [aiSim]);
+  }, [aiSim, sessionMode]);
 
   // Key shortcuts
   useEffect(() => {

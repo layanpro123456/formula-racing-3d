@@ -1,6 +1,6 @@
 # Formula Racing 3D
 
-A high-performance, browser-based Formula motorsport simulator built with Next.js 14, React Three Fiber, Three.js, and TypeScript.
+A high-performance, browser-based Formula motorsport simulator built with Next.js 14, Babylon.js, Havok Physics WASM, and TypeScript.
 
 ![Formula Racing 3D Gameplay](public/screenshots/gameplay_chase.png)
 
@@ -94,33 +94,40 @@ Low-angle track camera delivering an intense sensation of speed at 300+ km/h.
 ```text
 formula-racing-nextjs/
 ├── app/
-│   ├── globals.css          # Styling for racing HUD, menus, and typography
-│   ├── layout.tsx           # Root layout and font configuration
-│   └── page.tsx             # Entry page mounting the RacingGame shell
+│   ├── globals.css              # Styling for racing HUD, menus, and typography
+│   ├── layout.tsx               # Root layout and font configuration
+│   └── page.tsx                 # Entry page mounting the RacingGame shell
 ├── components/
-│   ├── FormulaCarModel.tsx  # Procedural Formula car with animated wheels & liveries
-│   ├── RacingGame.tsx       # Core R3F Canvas, Driver simulation loop, and state
-│   ├── RacingHUD.tsx        # Timing tower, shift lights, and telemetry overlay
-│   └── TrackGenerator.tsx   # Procedural 3D track ribbon, kerbs, and barriers
+│   ├── RacingGame.tsx           # Paddock menu shell and Babylon game mounting
+│   ├── RacingHUD.tsx            # Timing tower, shift lights, and telemetry overlay
+│   └── babylon/
+│       ├── BabylonRacingGame.tsx    # Babylon.js engine, render loop, and camera
+│       ├── BabylonTrackGenerator.ts # Procedural 3D track ribbon, kerbs, and barriers
+│       └── BabylonVehicle.ts        # PBR car model with animated wheels and DRS
 ├── data/
-│   └── tracks.ts            # 3D circuit waypoints, elevation, and sector data
+│   ├── tracks.ts                # 3D circuit waypoints, elevation, and sector data
+│   └── liveries.ts              # Team livery definitions
 ├── lib/
 │   ├── ai/
-│   │   └── AIDriver.ts      # AI pathfinding, speed profiles, and collision avoidance
+│   │   └── AIDriver.ts          # AI pathfinding, speed profiles, and collision avoidance
 │   ├── audio/
-│   │   └── EngineSound.ts   # Procedural Web Audio API sound synthesizer
+│   │   └── EngineSound.ts       # Procedural Web Audio API sound synthesizer
+│   ├── babylon/
+│   │   └── havokLoader.ts       # Havok WASM physics plugin loader
+│   ├── math/
+│   │   └── Spline3D.ts          # Arc-length parameterized Catmull-Rom spline
 │   └── physics/
-│       └── VehiclePhysics.ts# Downforce, tire friction, collisions, and telemetry
+│       └── VehiclePhysics.ts    # Downforce, tire friction, collisions, and telemetry
 ├── public/
-│   └── screenshots/         # In-game preview images
-├── ARCHITECTURE.md          # In-depth mathematical and rendering documentation
-├── CONTRIBUTING.md          # Contributor standards and guidelines
-└── ROADMAP.md               # Phased development roadmap
+│   └── screenshots/             # In-game preview images
+├── ARCHITECTURE.md              # In-depth mathematical and rendering documentation
+├── CONTRIBUTING.md              # Contributor standards and guidelines
+└── ROADMAP.md                   # Phased development roadmap
 ```
 
 ### Performance Standards
-- **Zero Allocations Inside `useFrame`**: Scratch vectors (`THREE.Vector3`, `THREE.Quaternion`) are allocated once using refs and mutated in-place to prevent garbage collection pauses.
-- **React State Decoupling**: High-frequency vehicle simulation runs at native refresh rate (60–140 Hz) inside mutable refs; HUD telemetry is throttled to maintain high rendering throughput.
+- **Zero Allocations Inside Render Loops**: Scratch vectors are allocated once using refs or module-level variables and mutated in-place to prevent garbage collection pauses.
+- **React State Decoupling**: High-frequency vehicle simulation runs at native refresh rate (60–140 Hz) inside mutable refs; HUD telemetry is updated efficiently to maintain high rendering throughput.
 
 ---
 

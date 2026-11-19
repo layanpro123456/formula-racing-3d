@@ -6,11 +6,10 @@ Welcome to the **Formula Racing 3D** repository. This document establishes guide
 
 ## 1. Project Overview & Tech Stack
 
-This project is a browser-based 3D arcade racing simulator built with:
+This project is a browser-based 3D motorsport racing simulator built with:
 - **Framework**: Next.js 14 (App Router)
 - **UI Library**: React 18
-- **3D Graphics**: Three.js (`three`) and React Three Fiber (`@react-three/fiber`)
-- **3D Helpers**: `@react-three/drei` (PerspectiveCamera, Sky, Environment)
+- **3D Graphics & Physics**: Babylon.js (`@babylonjs/core`, `@babylonjs/havok`, `@babylonjs/loaders`)
 - **Language**: TypeScript 5.7+
 - **Styling**: Vanilla CSS (`app/globals.css`) for high-performance HUD overlays
 
@@ -21,25 +20,35 @@ This project is a browser-based 3D arcade racing simulator built with:
 ```text
 formula-racing-nextjs/
 ├── app/
-│   ├── globals.css          # Global styling, racing HUD, menus, and typography
-│   ├── layout.tsx           # Root layout, viewport metadata, and fonts
-│   └── page.tsx             # Main page entry mounting the RacingGame shell
+│   ├── globals.css              # Global styling, racing HUD, menus, and typography
+│   ├── layout.tsx               # Root layout, viewport metadata, and fonts
+│   └── page.tsx                 # Main page entry mounting the RacingGame shell
 ├── components/
-│   └── RacingGame.tsx       # Core R3F Canvas, Driver loop, TrackScene, Car, & HUD
+│   ├── RacingGame.tsx           # Paddock menu shell and Babylon game mounting
+│   ├── RacingHUD.tsx            # Broadcast F1 telemetry HUD & shift lights
+│   └── babylon/
+│       ├── BabylonRacingGame.tsx    # Babylon.js engine, render loop, and camera
+│       ├── BabylonTrackGenerator.ts # Procedural 3D banked ribbon, kerbs, barriers
+│       └── BabylonVehicle.ts        # PBR car model with animated wheels and DRS
 ├── data/
-│   └── tracks.ts            # Track definitions, spline points, metadata
-├── skills/
-│   └── racing-sim-gameplay/ # Project skill definitions
-│       └── SKILL.md         # Procedural guide for R3F racing sim development
-├── .agents/
-│   └── skills/              # Agent skill discovery directory
-│       └── racing-sim-gameplay/
-│           └── SKILL.md
-├── ARCHITECTURE.md          # Detailed 3D graphics & simulation architecture
-├── CONTRIBUTING.md          # Code standards & contribution workflows
-├── ROADMAP.md               # Milestones from prototype to full game
-├── README.md                # General user instructions & quick start
-└── package.json             # Dependencies and scripts
+│   ├── tracks.ts                # Track definitions, spline points, metadata
+│   └── liveries.ts              # Team livery definitions
+├── lib/
+│   ├── ai/
+│   │   └── AIDriver.ts          # AI grid simulator and spline pathfinding
+│   ├── audio/
+│   │   └── EngineSound.ts       # Synthesized Web Audio F1 engine audio
+│   ├── babylon/
+│   │   └── havokLoader.ts       # Havok WASM physics plugin loader
+│   ├── math/
+│   │   └── Spline3D.ts          # Arc-length parameterized Catmull-Rom spline
+│   └── physics/
+│       └── VehiclePhysics.ts    # 4-wheel load transfer, Pacejka slip, thermal model
+├── ARCHITECTURE.md              # Detailed 3D graphics & simulation architecture
+├── CONTRIBUTING.md              # Code standards & contribution workflows
+├── ROADMAP.md                   # Milestones from prototype to full game
+├── README.md                    # General user instructions & quick start
+└── package.json                 # Dependencies and scripts
 ```
 
 ---
@@ -48,23 +57,23 @@ formula-racing-nextjs/
 
 Whenever you read, edit, or generate code in this repository, you **must adhere to these invariants**:
 
-### A. WebGL & Three.js Performance Invariants
-1. **Zero Allocations Inside `useFrame`**:
-   - Never instantiate objects (`new THREE.Vector3()`, `new THREE.Matrix4()`, `new THREE.Quaternion()`, object literals, or array spreads) inside `useFrame` callbacks.
+### A. WebGL & Babylon.js Performance Invariants
+1. **Zero Allocations Inside Render Loops**:
+   - Never instantiate objects (`new Vector3()`, `new Matrix()`, `new Quaternion()`, object literals, or array spreads) inside `runRenderLoop` or per-frame callbacks.
    - High-frequency allocations cause aggressive garbage collection pauses (GC frame drops) at 60/120 FPS.
-   - Allocate scratch vectors, rays, or quaternions once using `useRef` or static module-level variables, and mutate them in-place (`.set()`, `.copy()`, `.addScaledVector()`).
+   - Pre-allocate scratch vectors and reuse them in-place (`.copyFrom()`, `.addInPlace()`, `.subtractInPlace()`, `Vector3.LerpToRef()`).
 
 2. **Decouple Game Physics from React Render Cycles**:
    - Do not trigger full React re-renders on every animation frame for simulation state (such as car position, wheel spin, or camera vectors). Keep simulation state in mutable `useRef` handles.
-   - Only push telemetry (speed, gear, lap time) to React state when required for HUD display, or throttle HUD updates to 10–20 Hz if performance bottlenecks arise.
+   - Only push telemetry (speed, gear, lap time) to React state when required for HUD display.
 
 3. **Geometry & Material Reuse**:
-   - Compute and cache geometries (`BufferGeometry`, `TubeGeometry`) using `useMemo`. Never recreate track or barrier geometry across frame renders unless the underlying track definition changes.
-   - Dispose of unmounted materials and geometries properly if dynamic track switching is implemented.
+   - Compute and cache geometries using standard Babylon mesh instances or ribbons. Never recreate track or barrier geometry across frame renders unless the underlying track definition changes.
+   - Dispose of unmounted materials, textures, and meshes properly when switching tracks.
 
 ### B. Next.js & Client Boundary Invariants
 1. **Explicit Client Directives**:
-   - Any component that renders `<Canvas>`, accesses `window`, uses Three.js hooks (`useFrame`, `useThree`), or manages user input events must include `"use client";` at the very top of the file.
+   - Any component that renders `<canvas>`, accesses `window`, uses Babylon.js APIs, or manages user input events must include `"use client";` at the very top of the file.
    - Keep page-level layouts (`app/layout.tsx`) as Server Components for optimal metadata rendering.
 
 2. **Safe Browser APIs**:
@@ -101,7 +110,7 @@ Before concluding code modifications, agents must verify that TypeScript types r
 - **Mathematical Clamping**:
   - Always clamp physics velocities, delta time (`Math.min(delta, 0.05)`), and camera distances to prevent numerical explosions during frame spikes or browser tab backgrounding.
 - **Sensible Units**:
-  - World distances are represented in meters (Three.js world units).
+  - World distances are represented in meters.
   - Telemetry speeds are simulated in meters/second and converted to km/h (`speed * 3.6`) for HUD presentation.
 
 ---
@@ -109,6 +118,5 @@ Before concluding code modifications, agents must verify that TypeScript types r
 ## 6. How Agents Should Implement New Features
 
 When asked to extend this project, consult the following documentation:
-- **Game Mechanics & Step-by-Step Runbooks**: Consult [SKILL.md](file:///c:/Users/layan/Downloads/formula-racing-nextjs-starter/formula-racing-nextjs/skills/racing-sim-gameplay/SKILL.md).
 - **System Architecture & Spline Maths**: Consult [ARCHITECTURE.md](file:///c:/Users/layan/Downloads/formula-racing-nextjs-starter/formula-racing-nextjs/ARCHITECTURE.md).
 - **Feature Roadmap**: Consult [ROADMAP.md](file:///c:/Users/layan/Downloads/formula-racing-nextjs-starter/formula-racing-nextjs/ROADMAP.md).

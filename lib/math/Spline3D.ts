@@ -222,33 +222,76 @@ export class Spline3D {
       }
     }
 
-    // Segment projection between bestIdx and neighboring sample
+    // Continuous segment projection: evaluate both adjacent segments [prevIdx, bestIdx] and [bestIdx, nextIdx]
+    // to prevent discontinuous clamping jumps when the vehicle is between samples
+    const prevIdx = (bestIdx - 1 + M) % M;
     const nextIdx = (bestIdx + 1) % M;
-    const pA = this.samples[bestIdx].point;
-    const pB = this.samples[nextIdx].point;
 
-    const vx = pB.x - pA.x;
-    const vy = pB.y - pA.y;
-    const vz = pB.z - pA.z;
-    const vLenSq = vx * vx + vy * vy + vz * vz;
+    // Segment A: [prevIdx, bestIdx]
+    const pPrev = this.samples[prevIdx].point;
+    const pBest = this.samples[bestIdx].point;
+    const vAx = pBest.x - pPrev.x;
+    const vAy = pBest.y - pPrev.y;
+    const vAz = pBest.z - pPrev.z;
+    const vALenSq = vAx * vAx + vAy * vAy + vAz * vAz;
+    const wAx = pos.x - pPrev.x;
+    const wAy = pos.y - pPrev.y;
+    const wAz = pos.z - pPrev.z;
+    const dotA = wAx * vAx + wAy * vAy + wAz * vAz;
+    const alphaA = vALenSq > 1e-6 ? Math.max(0, Math.min(1, dotA / vALenSq)) : 0;
+    const projAx = pPrev.x + alphaA * vAx;
+    const projAy = pPrev.y + alphaA * vAy;
+    const projAz = pPrev.z + alphaA * vAz;
+    const dxA = pos.x - projAx;
+    const dyA = pos.y - projAy;
+    const dzA = pos.z - projAz;
+    const distSqA = dxA * dxA + dyA * dyA + dzA * dzA;
 
-    const wx = pos.x - pA.x;
-    const wy = pos.y - pA.y;
-    const wz = pos.z - pA.z;
+    // Segment B: [bestIdx, nextIdx]
+    const pNext = this.samples[nextIdx].point;
+    const vBx = pNext.x - pBest.x;
+    const vBy = pNext.y - pBest.y;
+    const vBz = pNext.z - pBest.z;
+    const vBLenSq = vBx * vBx + vBy * vBy + vBz * vBz;
+    const wBx = pos.x - pBest.x;
+    const wBy = pos.y - pBest.y;
+    const wBz = pos.z - pBest.z;
+    const dotB = wBx * vBx + wBy * vBy + wBz * vBz;
+    const alphaB = vBLenSq > 1e-6 ? Math.max(0, Math.min(1, dotB / vBLenSq)) : 0;
+    const projBx = pBest.x + alphaB * vBx;
+    const projBy = pBest.y + alphaB * vBy;
+    const projBz = pBest.z + alphaB * vBz;
+    const dxB = pos.x - projBx;
+    const dyB = pos.y - projBy;
+    const dzB = pos.z - projBz;
+    const distSqB = dxB * dxB + dyB * dyB + dzB * dzB;
 
-    const dot = wx * vx + wy * vy + wz * vz;
-    const alpha = vLenSq > 0.00001 ? Math.max(0, Math.min(1, dot / vLenSq)) : 0;
+    let chosenIdx: number;
+    let chosenNextIdx: number;
+    let chosenAlpha: number;
 
-    outPoint.x = pA.x + alpha * vx;
-    outPoint.y = pA.y + alpha * vy;
-    outPoint.z = pA.z + alpha * vz;
+    if (distSqA < distSqB) {
+      chosenIdx = prevIdx;
+      chosenNextIdx = bestIdx;
+      chosenAlpha = alphaA;
+      outPoint.x = projAx;
+      outPoint.y = projAy;
+      outPoint.z = projAz;
+    } else {
+      chosenIdx = bestIdx;
+      chosenNextIdx = nextIdx;
+      chosenAlpha = alphaB;
+      outPoint.x = projBx;
+      outPoint.y = projBy;
+      outPoint.z = projBz;
+    }
 
-    // Interpolate tangent and normal
-    const sA = this.samples[bestIdx];
-    const sB = this.samples[nextIdx];
-    outTangent.x = sA.tangent.x + alpha * (sB.tangent.x - sA.tangent.x);
-    outTangent.y = sA.tangent.y + alpha * (sB.tangent.y - sA.tangent.y);
-    outTangent.z = sA.tangent.z + alpha * (sB.tangent.z - sA.tangent.z);
+    // Interpolate tangent and normal continuously
+    const sA = this.samples[chosenIdx];
+    const sB = this.samples[chosenNextIdx];
+    outTangent.x = sA.tangent.x + chosenAlpha * (sB.tangent.x - sA.tangent.x);
+    outTangent.y = sA.tangent.y + chosenAlpha * (sB.tangent.y - sA.tangent.y);
+    outTangent.z = sA.tangent.z + chosenAlpha * (sB.tangent.z - sA.tangent.z);
     outTangent.normalize();
 
     Vector3.CrossToRef(outTangent, UP, outNormal);
@@ -260,7 +303,7 @@ export class Spline3D {
     const signedLateral = diffX * outNormal.x + diffZ * outNormal.z;
     const lateralDist = Math.abs(signedLateral);
 
-    const u = ((bestIdx + alpha) / M) % 1;
+    const u = ((chosenIdx + chosenAlpha) / M) % 1;
 
     return {
       u: u < 0 ? u + 1 : u,

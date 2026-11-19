@@ -325,6 +325,7 @@ export default function BabylonRacingGame({
       // Pre-allocated scratch vectors for zero-allocation render loop
       const camDesired = new Vector3();
       const camTarget = new Vector3();
+      const camTargetCurrent = new Vector3(startPt.x, startPt.y + 1.2, startPt.z);
       let prevT = 0;
 
       // Render & Simulation Loop
@@ -390,18 +391,21 @@ export default function BabylonRacingGame({
             const camZ = pz - Math.cos(heading) * 8.5;
             camDesired.set(camX, camY, camZ);
             camTarget.set(px, py + 1.2, pz);
-            Vector3.LerpToRef(camera.position, camDesired, 1 - Math.exp(-6 * dt), camera.position);
-            camera.setTarget(camTarget);
+            Vector3.LerpToRef(camera.position, camDesired, 1 - Math.exp(-8 * dt), camera.position);
+            Vector3.LerpToRef(camTargetCurrent, camTarget, 1 - Math.exp(-12 * dt), camTargetCurrent);
+            camera.setTarget(camTargetCurrent);
             const safeSpeedMs = Number.isFinite(tData.speedMs) ? tData.speedMs : 0;
             camera.fov = 1.05 + (safeSpeedMs / 95) * 0.25;
           } else if (currentCamMode === "cockpit") {
-            camera.position.set(px, py + 0.76, pz);
+            camDesired.set(px, py + 0.76, pz);
             camTarget.set(px + Math.sin(heading) * 15, py + 0.76, pz + Math.cos(heading) * 15);
+            camera.position.copyFrom(camDesired);
             camera.setTarget(camTarget);
             camera.fov = 1.25;
           } else {
-            camera.position.set(px, py + 0.45, pz);
+            camDesired.set(px, py + 0.45, pz);
             camTarget.set(px + Math.sin(heading) * 18, py + 0.35, pz + Math.cos(heading) * 18);
+            camera.position.copyFrom(camDesired);
             camera.setTarget(camTarget);
             camera.fov = 1.4;
           }

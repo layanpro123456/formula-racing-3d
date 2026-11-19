@@ -58,12 +58,12 @@ export const TRACKS: Track[] = [
       [30, -0.5, 140],    // Accelerating to Pouhon
       [18, -1.8, 100],    // Pouhon double-left apex
       [8, -2.0, 60],      // Pouhon exit
-      [15, -1.2, 25],     // Fagnes chicane
-      [25, -0.5, 0],      // Stavelot corner
-      [28, 0.0, -35],     // Blanchimont flat-out left
-      [22, 0.2, -75],     // Blanchimont entry
-      [10, 0.0, -100],    // Bus Stop chicane heavy braking
-      [2, 0.0, -90],      // Bus Stop chicane apex
+      [34, -1.2, 25],     // Fagnes chicane
+      [44, -0.5, 0],      // Stavelot corner
+      [42, 0.0, -35],     // Blanchimont flat-out left
+      [32, 0.2, -75],     // Blanchimont entry
+      [15, 0.0, -100],    // Bus Stop chicane heavy braking
+      [4, 0.0, -90],      // Bus Stop chicane apex
       [0, 0.0, -50],      // Pit straight entry
       [0, 0, 0]           // Closed loop finish
     ],
@@ -191,22 +191,22 @@ export const TRACKS: Track[] = [
     // Steep climb up Sainte Devote to Casino, drop to Grand Hotel Hairpin, Tunnel, and Chicane
     points: [
       [0, 0, 0],          // Pit straight
-      [18, 0.2, 2],       // Sainte Devote right corner
-      [22, 2.5, 14],      // Beau Rivage steep uphill climb
-      [18, 5.8, 30],      // Massenet left
-      [8, 7.5, 42],       // Casino Square crest
-      [-6, 6.2, 45],      // Mirabeau Haute descent begins
-      [-18, 4.0, 40],     // Grand Hotel hairpin (slowest turn in F1)
-      [-22, 2.8, 28],     // Mirabeau Bas
-      [-18, 1.5, 16],     // Portier entry
-      [-8, 0.5, 10],      // Entering the Tunnel
-      [10, 0.0, -5],      // Tunnel descent flat out
-      [30, -0.2, -28],    // Tunnel exit towards chicane
-      [42, 0.0, -52],     // Nouvelle Chicane braking
-      [36, 0.0, -68],     // Tabac left corner
-      [22, 0.0, -82],     // Louis Chiron / Swimming Pool
-      [6, 0.0, -85],      // Swimming Pool exit chicane
-      [-10, 0.0, -75],    // La Rascasse tight right
+      [14, 0.2, 2],       // Sainte Devote right corner
+      [22, 2.5, 16],      // Beau Rivage steep uphill climb
+      [24, 5.8, 34],      // Massenet left
+      [16, 7.5, 48],      // Casino Square crest
+      [2, 6.2, 52],       // Mirabeau Haute descent begins
+      [-10, 4.0, 46],     // Grand Hotel hairpin (slowest turn in F1)
+      [-8, 2.8, 34],      // Mirabeau Bas
+      [2, 1.8, 24],       // Portier entry
+      [14, 1.0, 14],      // Entering the Tunnel
+      [25, 0.2, 0],       // Tunnel descent flat out
+      [36, -0.2, -25],    // Tunnel exit towards chicane
+      [44, 0.0, -52],     // Nouvelle Chicane braking
+      [38, 0.0, -70],     // Tabac left corner
+      [24, 0.0, -84],     // Louis Chiron / Swimming Pool
+      [8, 0.0, -86],      // Swimming Pool exit chicane
+      [-8, 0.0, -76],     // La Rascasse tight right
       [-12, 0.0, -50],    // Anthony Noghes final corner
       [-6, 0.0, -25],     // Pit straight acceleration
       [0, 0, 0]

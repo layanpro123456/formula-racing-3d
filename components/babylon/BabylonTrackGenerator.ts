@@ -22,18 +22,29 @@ export function createBabylonTrack(track: Track, spline: Spline3D, scene: Scene)
   const runoffW = 3.0;
   const barrierOffset = halfW + kerbW + runoffW;
 
-  // Path arrays for CreateRibbon
+  // Calculate lowest track elevation to place ground safely beneath all roads
+  let minElev = 0;
+  for (const pt3 of spline.points) {
+    if (pt3.y < minElev) minElev = pt3.y;
+  }
+  const groundFloorY = Math.min(-18.0, minElev - 8.0);
+
+  // Path arrays for CreateRibbon with strict vertical layers to eliminate Z-fighting
   const leftRoadPath: Vector3[] = [];
   const rightRoadPath: Vector3[] = [];
 
   const leftKerbInner: Vector3[] = [];
   const leftKerbOuter: Vector3[] = [];
-
   const rightKerbInner: Vector3[] = [];
   const rightKerbOuter: Vector3[] = [];
 
+  const leftRunoffInner: Vector3[] = [];
   const leftRunoffOuter: Vector3[] = [];
+  const rightRunoffInner: Vector3[] = [];
   const rightRunoffOuter: Vector3[] = [];
+
+  const leftSkirtOuter: Vector3[] = [];
+  const rightSkirtOuter: Vector3[] = [];
 
   const leftBarrierPath: Vector3[] = [];
   const rightBarrierPath: Vector3[] = [];
@@ -46,49 +57,63 @@ export function createBabylonTrack(track: Track, spline: Spline3D, scene: Scene)
   const side = new Vector3();
 
   for (let i = 0; i <= segments; i++) {
-    const u = i / segments;
+    const u = (i % segments) / segments;
     spline.getPointAtToRef(u, pt);
     spline.getTangentAtToRef(u, tangent);
 
-    // Tangent derivative curvature for authentic banking
+    // Tangent derivative curvature for smooth realistic banking
     const nextU = (u + 0.005) % 1.0;
     spline.getTangentAtToRef(nextU, nextTan);
     Vector3.CrossToRef(tangent, nextTan, cross);
-    const curvSign = cross.y * 22.0;
-    const bankingAngle = Math.max(-0.12, Math.min(0.12, curvSign));
+    const curvSign = cross.y * 18.0;
+    const bankingAngle = Math.max(-0.10, Math.min(0.10, curvSign));
 
     Vector3.CrossToRef(tangent, up, side);
     side.normalize();
     const bankAxis = up.add(side.scale(-bankingAngle)).normalize();
     const bankedSide = Vector3.Cross(tangent, bankAxis).normalize();
 
-    // Road edges
-    const lRoad = pt.add(bankedSide.scale(halfW));
-    const rRoad = pt.add(bankedSide.scale(-halfW));
-    leftRoadPath.push(lRoad.add(new Vector3(0, 0.02, 0)));
-    rightRoadPath.push(rRoad.add(new Vector3(0, 0.02, 0)));
+    // 1. Asphalt Road surface (elevated 0.03m above centerline)
+    const lRoad = pt.add(bankedSide.scale(halfW)).add(new Vector3(0, 0.03, 0));
+    const rRoad = pt.add(bankedSide.scale(-halfW)).add(new Vector3(0, 0.03, 0));
+    leftRoadPath.push(lRoad);
+    rightRoadPath.push(rRoad);
 
-    // 3D Kerbs
-    const lKerbOut = lRoad.add(bankedSide.scale(kerbW)).add(new Vector3(0, 0.08, 0));
-    const rKerbOut = rRoad.add(bankedSide.scale(-kerbW)).add(new Vector3(0, 0.08, 0));
-    leftKerbInner.push(lRoad.add(new Vector3(0, 0.02, 0)));
+    // 2. 3D Kerbs (distinct elevation: inner 0.034m, outer 0.065m to eliminate coplanar flicker)
+    const lKerbIn = pt.add(bankedSide.scale(halfW)).add(new Vector3(0, 0.034, 0));
+    const rKerbIn = pt.add(bankedSide.scale(-halfW)).add(new Vector3(0, 0.034, 0));
+    const lKerbOut = pt.add(bankedSide.scale(halfW + kerbW)).add(new Vector3(0, 0.065, 0));
+    const rKerbOut = pt.add(bankedSide.scale(-(halfW + kerbW))).add(new Vector3(0, 0.065, 0));
+    leftKerbInner.push(lKerbIn);
     leftKerbOuter.push(lKerbOut);
-    rightKerbInner.push(rRoad.add(new Vector3(0, 0.02, 0)));
+    rightKerbInner.push(rKerbIn);
     rightKerbOuter.push(rKerbOut);
 
-    // Runoffs
-    leftRunoffOuter.push(lKerbOut.add(bankedSide.scale(runoffW)));
-    rightRunoffOuter.push(rKerbOut.add(bankedSide.scale(-runoffW)));
+    // 3. AstroTurf Runoffs (inner 0.04m, outer 0.025m sloping gently outward)
+    const lRunoffIn = pt.add(bankedSide.scale(halfW + kerbW)).add(new Vector3(0, 0.04, 0));
+    const rRunoffIn = pt.add(bankedSide.scale(-(halfW + kerbW))).add(new Vector3(0, 0.04, 0));
+    const lRunoffOut = pt.add(bankedSide.scale(barrierOffset)).add(new Vector3(0, 0.025, 0));
+    const rRunoffOut = pt.add(bankedSide.scale(-barrierOffset)).add(new Vector3(0, 0.025, 0));
+    leftRunoffInner.push(lRunoffIn);
+    leftRunoffOuter.push(lRunoffOut);
+    rightRunoffInner.push(rRunoffIn);
+    rightRunoffOuter.push(rRunoffOut);
 
-    // Barriers
-    leftBarrierPath.push(pt.add(bankedSide.scale(barrierOffset)).add(new Vector3(0, 0.52, 0)));
-    rightBarrierPath.push(pt.add(bankedSide.scale(-barrierOffset)).add(new Vector3(0, 0.52, 0)));
+    // 4. Grass Embankment Skirts (anchoring track to surrounding terrain)
+    const lSkirtOut = pt.add(bankedSide.scale(barrierOffset + 14.0)).add(new Vector3(0, -3.8, 0));
+    const rSkirtOut = pt.add(bankedSide.scale(-(barrierOffset + 14.0))).add(new Vector3(0, -3.8, 0));
+    leftSkirtOuter.push(lSkirtOut);
+    rightSkirtOuter.push(rSkirtOut);
+
+    // 5. Armco Barriers (height 0.45m above surface)
+    leftBarrierPath.push(pt.add(bankedSide.scale(barrierOffset)).add(new Vector3(0, 0.45, 0)));
+    rightBarrierPath.push(pt.add(bankedSide.scale(-barrierOffset)).add(new Vector3(0, 0.45, 0)));
   }
 
-  // 1. Procedural PBR Asphalt Road
+  // 1. Procedural PBR Asphalt Road with seamless closed loop
   const roadMesh = MeshBuilder.CreateRibbon(
     "babylonRoad",
-    { pathArray: [leftRoadPath, rightRoadPath], sideOrientation: Mesh.DOUBLESIDE },
+    { pathArray: [leftRoadPath, rightRoadPath], closeArray: false, closePath: true, sideOrientation: Mesh.DOUBLESIDE },
     scene
   );
   roadMesh.parent = root;
@@ -133,16 +158,16 @@ export function createBabylonTrack(track: Track, spline: Spline3D, scene: Scene)
   roadMaterial.metallic = 0.1;
   roadMesh.material = roadMaterial;
 
-  // 2. 3D Kerbs with Alternating Red/White Stripes
+  // 2. 3D Kerbs with Alternating Red/White Stripes (closed loop, zero coplanar flicker)
   const leftKerbMesh = MeshBuilder.CreateRibbon(
     "leftKerb",
-    { pathArray: [leftKerbInner, leftKerbOuter], sideOrientation: Mesh.DOUBLESIDE },
+    { pathArray: [leftKerbInner, leftKerbOuter], closeArray: false, closePath: true, sideOrientation: Mesh.DOUBLESIDE },
     scene
   );
   leftKerbMesh.parent = root;
   const rightKerbMesh = MeshBuilder.CreateRibbon(
     "rightKerb",
-    { pathArray: [rightKerbInner, rightKerbOuter], sideOrientation: Mesh.DOUBLESIDE },
+    { pathArray: [rightKerbInner, rightKerbOuter], closeArray: false, closePath: true, sideOrientation: Mesh.DOUBLESIDE },
     scene
   );
   rightKerbMesh.parent = root;
@@ -168,16 +193,16 @@ export function createBabylonTrack(track: Track, spline: Spline3D, scene: Scene)
   leftKerbMesh.material = kerbMat;
   rightKerbMesh.material = kerbMat;
 
-  // 3. Runoff Synthetic AstroTurf
+  // 3. Runoff Synthetic AstroTurf (closed loop, non-overlapping)
   const leftRunoffMesh = MeshBuilder.CreateRibbon(
     "leftRunoff",
-    { pathArray: [leftKerbOuter, leftRunoffOuter], sideOrientation: Mesh.DOUBLESIDE },
+    { pathArray: [leftRunoffInner, leftRunoffOuter], closeArray: false, closePath: true, sideOrientation: Mesh.DOUBLESIDE },
     scene
   );
   leftRunoffMesh.parent = root;
   const rightRunoffMesh = MeshBuilder.CreateRibbon(
     "rightRunoff",
-    { pathArray: [rightKerbOuter, rightRunoffOuter], sideOrientation: Mesh.DOUBLESIDE },
+    { pathArray: [rightRunoffInner, rightRunoffOuter], closeArray: false, closePath: true, sideOrientation: Mesh.DOUBLESIDE },
     scene
   );
   rightRunoffMesh.parent = root;
@@ -187,61 +212,7 @@ export function createBabylonTrack(track: Track, spline: Spline3D, scene: Scene)
   leftRunoffMesh.material = runoffMat;
   rightRunoffMesh.material = runoffMat;
 
-  // 4. Armco Barriers
-  const leftBarrier = MeshBuilder.CreateTube(
-    "leftBarrier",
-    { path: leftBarrierPath, radius: 0.24, sideOrientation: Mesh.DOUBLESIDE },
-    scene
-  );
-  leftBarrier.parent = root;
-  const rightBarrier = MeshBuilder.CreateTube(
-    "rightBarrier",
-    { path: rightBarrierPath, radius: 0.24, sideOrientation: Mesh.DOUBLESIDE },
-    scene
-  );
-  rightBarrier.parent = root;
-
-  const barrierMat = new PBRMaterial("barrierPBR", scene);
-  barrierMat.albedoColor = new Color3(0.85, 0.88, 0.92);
-  barrierMat.metallic = 0.8;
-  barrierMat.roughness = 0.35;
-  leftBarrier.material = barrierMat;
-  rightBarrier.material = barrierMat;
-
-  // 5. Track-side Marshal Posts along barriers
-  const postSpacing = Math.floor(segments / 24);
-  for (let i = 0; i < segments; i += postSpacing) {
-    const lPos = leftBarrierPath[i];
-    const rPos = rightBarrierPath[i];
-
-    if (lPos) {
-      const lPost = MeshBuilder.CreateCylinder(`lPost_${i}`, {
-        diameter: 0.16,
-        height: 2.2,
-        tessellation: 6
-      }, scene);
-      lPost.parent = root;
-      lPost.position = new Vector3(lPos.x, lPos.y + 0.6, lPos.z);
-      lPost.material = barrierMat;
-    }
-    if (rPos) {
-      const rPost = MeshBuilder.CreateCylinder(`rPost_${i}`, {
-        diameter: 0.16,
-        height: 2.2,
-        tessellation: 6
-      }, scene);
-      rPost.parent = root;
-      rPost.position = new Vector3(rPos.x, rPos.y + 0.6, rPos.z);
-      rPost.material = barrierMat;
-    }
-  }
-
-  // 6. Surrounding Ground Terrain with Procedural Grass Texture
-  const ground = MeshBuilder.CreateGround("ground", { width: 1800, height: 1800 }, scene);
-  ground.parent = root;
-  ground.position.y = -0.35;
-  ground.receiveShadows = true;
-
+  // 4. Natural Earth Embankment Skirts (anchors track to surrounding terrain, eliminates floating ribbons)
   const groundTex = new DynamicTexture("groundTex", { width: 512, height: 512 }, scene);
   const gCtx = groundTex.getContext() as CanvasRenderingContext2D;
   if (gCtx) {
@@ -267,6 +238,77 @@ export function createBabylonTrack(track: Track, spline: Spline3D, scene: Scene)
   groundMat.albedoTexture = groundTex;
   groundMat.roughness = 0.95;
   groundMat.metallic = 0.0;
+
+  const leftSkirtMesh = MeshBuilder.CreateRibbon(
+    "leftSkirt",
+    { pathArray: [leftRunoffOuter, leftSkirtOuter], closeArray: false, closePath: true, sideOrientation: Mesh.DOUBLESIDE },
+    scene
+  );
+  leftSkirtMesh.parent = root;
+  leftSkirtMesh.material = groundMat;
+
+  const rightSkirtMesh = MeshBuilder.CreateRibbon(
+    "rightSkirt",
+    { pathArray: [rightRunoffOuter, rightSkirtOuter], closeArray: false, closePath: true, sideOrientation: Mesh.DOUBLESIDE },
+    scene
+  );
+  rightSkirtMesh.parent = root;
+  rightSkirtMesh.material = groundMat;
+
+  // 5. Armco Barriers (calibrated radius 0.14m for sleek F1 guardrail)
+  const leftBarrier = MeshBuilder.CreateTube(
+    "leftBarrier",
+    { path: leftBarrierPath, radius: 0.14, tessellation: 8, sideOrientation: Mesh.DOUBLESIDE },
+    scene
+  );
+  leftBarrier.parent = root;
+  const rightBarrier = MeshBuilder.CreateTube(
+    "rightBarrier",
+    { path: rightBarrierPath, radius: 0.14, tessellation: 8, sideOrientation: Mesh.DOUBLESIDE },
+    scene
+  );
+  rightBarrier.parent = root;
+
+  const barrierMat = new PBRMaterial("barrierPBR", scene);
+  barrierMat.albedoColor = new Color3(0.85, 0.88, 0.92);
+  barrierMat.metallic = 0.8;
+  barrierMat.roughness = 0.35;
+  leftBarrier.material = barrierMat;
+  rightBarrier.material = barrierMat;
+
+  // 6. Track-side Marshal Posts along barriers
+  const postSpacing = Math.floor(segments / 24);
+  for (let i = 0; i < segments; i += postSpacing) {
+    const lPos = leftBarrierPath[i];
+    const rPos = rightBarrierPath[i];
+
+    if (lPos) {
+      const lPost = MeshBuilder.CreateCylinder(`lPost_${i}`, {
+        diameter: 0.12,
+        height: 1.8,
+        tessellation: 6
+      }, scene);
+      lPost.parent = root;
+      lPost.position = new Vector3(lPos.x, lPos.y - 0.2, lPos.z);
+      lPost.material = barrierMat;
+    }
+    if (rPos) {
+      const rPost = MeshBuilder.CreateCylinder(`rPost_${i}`, {
+        diameter: 0.12,
+        height: 1.8,
+        tessellation: 6
+      }, scene);
+      rPost.parent = root;
+      rPost.position = new Vector3(rPos.x, rPos.y - 0.2, rPos.z);
+      rPost.material = barrierMat;
+    }
+  }
+
+  // 7. Surrounding Ground Terrain (placed safely at groundFloorY below all tracks)
+  const ground = MeshBuilder.CreateGround("ground", { width: 2200, height: 2200 }, scene);
+  ground.parent = root;
+  ground.position.y = groundFloorY;
+  ground.receiveShadows = true;
   ground.material = groundMat;
 
   return root;

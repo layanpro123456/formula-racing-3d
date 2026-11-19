@@ -142,17 +142,21 @@ function Driver({
     prevT.current = physics.current.currentT;
 
     // 3. Update Car 3D Transform
-    carGroup.current.position.copy(physics.current.position);
-    carGroup.current.rotation.y = physics.current.heading;
-    carGroup.current.rotation.x = physics.current.pitch;
-    carGroup.current.rotation.z = physics.current.roll;
+    const carPos = physics.current.position;
+    if (!Number.isFinite(carPos.x) || !Number.isFinite(carPos.y) || !Number.isFinite(carPos.z)) {
+      carPos.copy(startPt);
+    }
+    carGroup.current.position.copy(carPos);
+    carGroup.current.rotation.y = Number.isFinite(physics.current.heading) ? physics.current.heading : 0;
+    carGroup.current.rotation.x = Number.isFinite(physics.current.pitch) ? physics.current.pitch : 0;
+    carGroup.current.rotation.z = Number.isFinite(physics.current.roll) ? physics.current.roll : 0;
 
     // Update car visual props
     setCarRenderProps({
-      steerAngle: physics.current.steerAngle,
-      speed: physics.current.speed,
+      steerAngle: Number.isFinite(physics.current.steerAngle) ? physics.current.steerAngle : 0,
+      speed: Number.isFinite(physics.current.speed) ? physics.current.speed : 0,
       isBraking: inputs.brake,
-      drsActive: physics.current.drsActive,
+      drsActive: !!physics.current.drsActive,
       brakeTemp: telemetry.brakeTemp,
       isLockup: telemetry.isLockup,
       tireSlip: telemetry.tireSlip,
@@ -173,11 +177,6 @@ function Driver({
     if (cameraRef.current) {
       const heading = Number.isFinite(physics.current.heading) ? physics.current.heading : 0;
       const speed = Number.isFinite(physics.current.speed) ? physics.current.speed : 0;
-      const carPos = physics.current.position;
-
-      if (!Number.isFinite(carPos.x) || !Number.isFinite(carPos.y) || !Number.isFinite(carPos.z)) {
-        carPos.copy(startPt);
-      }
 
       if (cameraMode === "chase") {
         // Third-person chase camera with dynamic distance & speed FOV
@@ -196,14 +195,17 @@ function Driver({
 
         // Speed-dependent dynamic FOV
         const targetFov = 62 + (speed / 95) * 16;
-        cameraRef.current.fov = THREE.MathUtils.lerp(cameraRef.current.fov, targetFov, dt * 4);
+        const safeTargetFov = Number.isFinite(targetFov) ? THREE.MathUtils.clamp(targetFov, 45, 110) : 65;
+        cameraRef.current.fov = THREE.MathUtils.lerp(cameraRef.current.fov, safeTargetFov, dt * 4);
         cameraRef.current.updateProjectionMatrix();
       } else if (cameraMode === "cockpit") {
         // Cockpit / Halo POV
         vCamOffset.current.set(0, 0.76, 0.25);
         vCamDesired.current.copy(carPos).add(vCamOffset.current);
-        vTarget.current.copy(vCamDesired.current).add(
-          new THREE.Vector3(Math.sin(heading) * 15, 0, Math.cos(heading) * 15)
+        vTarget.current.set(
+          vCamDesired.current.x + Math.sin(heading) * 15,
+          vCamDesired.current.y,
+          vCamDesired.current.z + Math.cos(heading) * 15
         );
 
         cameraRef.current.position.copy(vCamDesired.current);
@@ -215,8 +217,10 @@ function Driver({
         // Front nose wing POV
         vCamOffset.current.set(0, 0.45, 1.8);
         vCamDesired.current.copy(carPos).add(vCamOffset.current);
-        vTarget.current.copy(vCamDesired.current).add(
-          new THREE.Vector3(Math.sin(heading) * 18, -0.2, Math.cos(heading) * 18)
+        vTarget.current.set(
+          vCamDesired.current.x + Math.sin(heading) * 18,
+          vCamDesired.current.y - 0.2,
+          vCamDesired.current.z + Math.cos(heading) * 18
         );
 
         cameraRef.current.position.copy(vCamDesired.current);
@@ -260,21 +264,29 @@ function Driver({
 function AICarMeshes({ aiCars }: { aiCars: AICarState[] }) {
   return (
     <group>
-      {aiCars.map((ai) => (
-        <group
-          key={ai.id}
-          position={[ai.position.x, ai.position.y, ai.position.z]}
-          rotation={[0, ai.heading, 0]}
-        >
-          <FormulaCarModel
-            liveryIndex={ai.liveryIndex}
-            steerAngle={ai.steerAngle}
-            speed={ai.speed}
-            isBraking={ai.speed < ai.targetSpeed - 5}
-            drsActive={ai.speed > 75}
-          />
-        </group>
-      ))}
+      {aiCars.map((ai) => {
+        const px = Number.isFinite(ai.position?.x) ? ai.position.x : 0;
+        const py = Number.isFinite(ai.position?.y) ? ai.position.y : 0;
+        const pz = Number.isFinite(ai.position?.z) ? ai.position.z : 0;
+        const heading = Number.isFinite(ai.heading) ? ai.heading : 0;
+        const steer = Number.isFinite(ai.steerAngle) ? ai.steerAngle : 0;
+        const speed = Number.isFinite(ai.speed) ? ai.speed : 0;
+        return (
+          <group
+            key={ai.id}
+            position={[px, py, pz]}
+            rotation={[0, heading, 0]}
+          >
+            <FormulaCarModel
+              liveryIndex={ai.liveryIndex}
+              steerAngle={steer}
+              speed={speed}
+              isBraking={speed < ai.targetSpeed - 5}
+              drsActive={speed > 75}
+            />
+          </group>
+        );
+      })}
     </group>
   );
 }
@@ -385,7 +397,7 @@ export default function RacingGame() {
     [totalLaps]
   );
 
-  if (engineType === "babylon" && state === "racing") {
+  if (engineType === "babylon" && (state === "racing" || state === "countdown")) {
     return (
       <BabylonRacingGame
         track={track}
@@ -499,19 +511,19 @@ export default function RacingGame() {
                 className={`pill-btn ${sessionMode === "grandprix" ? "active" : ""}`}
                 onClick={() => setSessionMode("grandprix")}
               >
-                🏁 GRAND PRIX
+                GRAND PRIX
               </button>
               <button
                 className={`pill-btn ${sessionMode === "qualifying" ? "active" : ""}`}
                 onClick={() => setSessionMode("qualifying")}
               >
-                ⏱ QUALIFYING
+                QUALIFYING
               </button>
               <button
                 className={`pill-btn ${sessionMode === "practice" ? "active" : ""}`}
                 onClick={() => setSessionMode("practice")}
               >
-                🔧 PRACTICE
+                PRACTICE
               </button>
             </div>
           </div>
@@ -594,8 +606,8 @@ export default function RacingGame() {
             <p className="eyebrow">SESSION COMPLETED</p>
             <h2>CHECKERED FLAG</h2>
             <div className="victory-pos">
-              GRAND PRIX FINISH · LAP TIME: {Math.floor(telemetry.lapTime / 60)}:
-              {(telemetry.lapTime % 60).toFixed(2).padStart(5, "0")}
+              GRAND PRIX FINISH · LAP TIME: {Math.floor((Number.isFinite(telemetry.lapTime) ? telemetry.lapTime : 0) / 60)}:
+              {((Number.isFinite(telemetry.lapTime) ? telemetry.lapTime : 0) % 60).toFixed(2).padStart(5, "0")}
             </div>
             <button
               className="primary-btn"

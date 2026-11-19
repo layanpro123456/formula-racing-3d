@@ -229,13 +229,13 @@ export function RacingHUD({
         {/* Action Buttons: Camera Switch, Sound, Pause */}
         <div className="hud-actions">
           <button className="action-btn" onClick={onToggleCamera} title="Toggle Camera (C)">
-            📷 {cameraMode.toUpperCase()}
+            CAM: {cameraMode.toUpperCase()}
           </button>
           <button className="action-btn" onClick={onToggleAudio} title="Mute/Unmute Audio (M)">
-            {isAudioMuted ? "🔇 SOUND OFF" : "🔊 SOUND ON"}
+            {isAudioMuted ? "SOUND: OFF" : "SOUND: ON"}
           </button>
           <button className="action-btn pause-btn" onClick={onPause}>
-            ⏸ PAUSE
+            PAUSE
           </button>
         </div>
       </div>

@@ -153,21 +153,25 @@ export default function BabylonRacingGame({
       // Initialize Sound
       engineAudio.init();
 
+      // Pre-allocated scratch vectors for zero-allocation render loop
+      const camDesired = new Vector3();
+      const camTarget = new Vector3();
       let prevT = 0;
 
       // Render & Simulation Loop
       engine.runRenderLoop(() => {
         if (!scene || isDisposed) return;
 
-        const dt = Math.min(engine.getDeltaTime() / 1000, 0.04);
+        const rawDt = engine.getDeltaTime() / 1000;
+        const dt = Number.isFinite(rawDt) && rawDt > 0 ? Math.min(rawDt, 0.04) : 0.016;
 
         if (!isPaused && !isFinished) {
           const inputs: VehicleInputs = {
-            accelerate: keys["w"] || keys["arrowup"],
-            brake: keys["s"] || keys["arrowdown"],
-            steerLeft: keys["a"] || keys["arrowleft"],
-            steerRight: keys["d"] || keys["arrowright"],
-            drs: keys["e"] || keys[" "]
+            accelerate: !!(keys["w"] || keys["arrowup"]),
+            brake: !!(keys["s"] || keys["arrowdown"]),
+            steerLeft: !!(keys["a"] || keys["arrowleft"]),
+            steerRight: !!(keys["d"] || keys["arrowright"]),
+            drs: !!(keys["e"] || keys[" "])
           };
 
           // Step Physics Engine
@@ -175,15 +179,22 @@ export default function BabylonRacingGame({
 
           // Update Babylon Vehicle Position & Rotation
           const p = physicsRef.current.position;
-          vehicle.root.position.set(p.x, p.y, p.z);
-          vehicle.root.rotation.y = physicsRef.current.heading;
-          vehicle.root.rotation.x = physicsRef.current.pitch;
-          vehicle.root.rotation.z = physicsRef.current.roll;
+          const px = Number.isFinite(p.x) ? p.x : startPt.x;
+          const py = Number.isFinite(p.y) ? p.y : startPt.y;
+          const pz = Number.isFinite(p.z) ? p.z : startPt.z;
+          const heading = Number.isFinite(physicsRef.current.heading) ? physicsRef.current.heading : 0;
+          const pitch = Number.isFinite(physicsRef.current.pitch) ? physicsRef.current.pitch : 0;
+          const roll = Number.isFinite(physicsRef.current.roll) ? physicsRef.current.roll : 0;
+
+          vehicle.root.position.set(px, py, pz);
+          vehicle.root.rotation.y = heading;
+          vehicle.root.rotation.x = pitch;
+          vehicle.root.rotation.z = roll;
 
           // Update Wheels, Steering & Brake Glow
           vehicle.update(
-            physicsRef.current.speed,
-            physicsRef.current.steerAngle,
+            Number.isFinite(physicsRef.current.speed) ? physicsRef.current.speed : 0,
+            Number.isFinite(physicsRef.current.steerAngle) ? physicsRef.current.steerAngle : 0,
             dt,
             inputs.brake,
             tData.brakeTemp,
@@ -191,21 +202,25 @@ export default function BabylonRacingGame({
           );
 
           // Update Camera Position & Target
-          const h = physicsRef.current.heading;
           if (cameraMode === "chase") {
-            const camX = p.x - Math.sin(h) * 8.5;
-            const camY = p.y + 4.2;
-            const camZ = p.z - Math.cos(h) * 8.5;
-            camera.position = Vector3.Lerp(camera.position, new Vector3(camX, camY, camZ), 1 - Math.exp(-6 * dt));
-            camera.setTarget(new Vector3(p.x, p.y + 1.2, p.z));
-            camera.fov = 1.05 + (tData.speedMs / 95) * 0.25;
+            const camX = px - Math.sin(heading) * 8.5;
+            const camY = py + 4.2;
+            const camZ = pz - Math.cos(heading) * 8.5;
+            camDesired.set(camX, camY, camZ);
+            camTarget.set(px, py + 1.2, pz);
+            Vector3.LerpToRef(camera.position, camDesired, 1 - Math.exp(-6 * dt), camera.position);
+            camera.setTarget(camTarget);
+            const safeSpeedMs = Number.isFinite(tData.speedMs) ? tData.speedMs : 0;
+            camera.fov = 1.05 + (safeSpeedMs / 95) * 0.25;
           } else if (cameraMode === "cockpit") {
-            camera.position.set(p.x, p.y + 0.76, p.z);
-            camera.setTarget(new Vector3(p.x + Math.sin(h) * 15, p.y + 0.76, p.z + Math.cos(h) * 15));
+            camera.position.set(px, py + 0.76, pz);
+            camTarget.set(px + Math.sin(heading) * 15, py + 0.76, pz + Math.cos(heading) * 15);
+            camera.setTarget(camTarget);
             camera.fov = 1.25;
           } else {
-            camera.position.set(p.x, p.y + 0.45, p.z);
-            camera.setTarget(new Vector3(p.x + Math.sin(h) * 18, p.y + 0.35, p.z + Math.cos(h) * 18));
+            camera.position.set(px, py + 0.45, pz);
+            camTarget.set(px + Math.sin(heading) * 18, py + 0.35, pz + Math.cos(heading) * 18);
+            camera.setTarget(camTarget);
             camera.fov = 1.4;
           }
 
@@ -331,8 +346,8 @@ export default function BabylonRacingGame({
             <p className="eyebrow">BABYLON.JS RACE CONTROL</p>
             <h2>CHECKERED FLAG</h2>
             <div className="victory-pos">
-              FINISH TIME: {Math.floor(telemetry.lapTime / 60)}:
-              {(telemetry.lapTime % 60).toFixed(2).padStart(5, "0")}
+              FINISH TIME: {Math.floor((Number.isFinite(telemetry.lapTime) ? telemetry.lapTime : 0) / 60)}:
+              {((Number.isFinite(telemetry.lapTime) ? telemetry.lapTime : 0) % 60).toFixed(2).padStart(5, "0")}
             </div>
             <button className="primary-btn" onClick={onExitToMenu}>
               RETURN TO PADDOCK <span>→</span>

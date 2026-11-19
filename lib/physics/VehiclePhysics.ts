@@ -91,14 +91,19 @@ export class VehiclePhysics {
 
   public reset(startPos: THREE.Vector3, startHeading: number) {
     this.position.copy(startPos);
+    if (!Number.isFinite(this.position.x) || !Number.isFinite(this.position.y) || !Number.isFinite(this.position.z)) {
+      this.position.set(0, 0, 0);
+    }
     this.velocity.set(0, 0, 0);
-    this.heading = startHeading;
+    this.heading = Number.isFinite(startHeading) ? startHeading : 0;
     this.speed = 0;
     this.steerAngle = 0;
     this.gear = 1;
     this.rpm = 4000;
     this.pitch = 0;
     this.roll = 0;
+    this.gForceLat = 0;
+    this.gForceLong = 0;
     this.currentT = 0;
     this.lapTime = 0;
     this.currentSector = 1;
@@ -114,11 +119,23 @@ export class VehiclePhysics {
     track: Track,
     spline: THREE.CatmullRomCurve3
   ): TelemetryData {
+    // 0. Defensive runtime guard on time-delta and all internal states
+    const safeDt = Number.isFinite(dt) && dt > 0 ? Math.min(dt, 0.05) : 0.016;
+    if (!Number.isFinite(this.speed)) this.speed = 0;
+    if (!Number.isFinite(this.steerAngle)) this.steerAngle = 0;
+    if (!Number.isFinite(this.heading)) this.heading = 0;
+    if (!Number.isFinite(this.rpm)) this.rpm = 4000;
+    if (!Number.isFinite(this.brakeTemp)) this.brakeTemp = 100;
+    if (!Number.isFinite(this.pitch)) this.pitch = 0;
+    if (!Number.isFinite(this.roll)) this.roll = 0;
+    if (!Number.isFinite(this.lapTime)) this.lapTime = 0;
+    if (!Number.isFinite(this.currentT)) this.currentT = 0;
+
     // 1. Steering dynamics with speed-sensitive progressive dampening
     const steerTarget = (inputs.steerLeft ? 1 : 0) - (inputs.steerRight ? 1 : 0);
     // At 300+ km/h, aero stability restricts high steering angles to avoid snap spins
     const maxSteer = 0.52 / (1.0 + Math.abs(this.speed) * 0.038);
-    this.steerAngle = THREE.MathUtils.lerp(this.steerAngle, steerTarget * maxSteer, dt * 11);
+    this.steerAngle = THREE.MathUtils.lerp(this.steerAngle, steerTarget * maxSteer, safeDt * 11);
 
     // 2. Query Track Spline Position & Surface Contact
     this.queryTrackPosition(spline, track);
@@ -152,10 +169,10 @@ export class VehiclePhysics {
     const deltaFzLat = (this.mass * ay * this.hCog) / this.trackWidth;
 
     // Individual 4-wheel normal loads
-    const fzFL = Math.max(200, baseLoad - deltaFzLong * 0.5 + deltaFzLat * 0.5);
-    const fzFR = Math.max(200, baseLoad - deltaFzLong * 0.5 - deltaFzLat * 0.5);
-    const fzRL = Math.max(200, baseLoad + deltaFzLong * 0.5 + deltaFzLat * 0.5);
-    const fzRR = Math.max(200, baseLoad + deltaFzLong * 0.5 - deltaFzLat * 0.5);
+    const fzFL = Math.max(200, (Number.isFinite(baseLoad) ? baseLoad : 2000) - (Number.isFinite(deltaFzLong) ? deltaFzLong : 0) * 0.5 + (Number.isFinite(deltaFzLat) ? deltaFzLat : 0) * 0.5);
+    const fzFR = Math.max(200, (Number.isFinite(baseLoad) ? baseLoad : 2000) - (Number.isFinite(deltaFzLong) ? deltaFzLong : 0) * 0.5 - (Number.isFinite(deltaFzLat) ? deltaFzLat : 0) * 0.5);
+    const fzRL = Math.max(200, (Number.isFinite(baseLoad) ? baseLoad : 2000) + (Number.isFinite(deltaFzLong) ? deltaFzLong : 0) * 0.5 + (Number.isFinite(deltaFzLat) ? deltaFzLat : 0) * 0.5);
+    const fzRR = Math.max(200, (Number.isFinite(baseLoad) ? baseLoad : 2000) + (Number.isFinite(deltaFzLong) ? deltaFzLong : 0) * 0.5 - (Number.isFinite(deltaFzLat) ? deltaFzLat : 0) * 0.5);
 
     // Inside front tire becomes unweighted in tight corners under trail-braking!
     const insideFrontLoad = this.steerAngle > 0 ? fzFR : fzFL;
@@ -191,7 +208,7 @@ export class VehiclePhysics {
         }
 
         // Brake disc thermal absorption: energy dissipated into heat
-        const heatGen = (Math.max(0, this.speed) * 12.0) * dt;
+        const heatGen = (Math.max(0, this.speed) * 12.0) * safeDt;
         this.brakeTemp = Math.min(950, this.brakeTemp + heatGen);
       } else {
         // Reverse gear
@@ -201,7 +218,7 @@ export class VehiclePhysics {
 
     // Cooling of brake discs via ram-air ducts (exponential decay towards 100 C)
     const coolingRate = 1.6 + (Math.max(0, this.speed) / 24);
-    this.brakeTemp = Math.max(100, THREE.MathUtils.lerp(this.brakeTemp, 100, dt * coolingRate));
+    this.brakeTemp = Math.max(100, THREE.MathUtils.lerp(this.brakeTemp, 100, safeDt * coolingRate));
     if (!Number.isFinite(this.brakeTemp)) this.brakeTemp = 100;
 
     // Rolling resistance & Net longitudinal acceleration
@@ -226,7 +243,7 @@ export class VehiclePhysics {
 
     // 7. Integrate Speed & Long G-Force
     const prevSpeed = this.speed;
-    this.speed += netLongitudinalAccel * dt;
+    this.speed += netLongitudinalAccel * safeDt;
 
     // Prevent overshoot into reverse/forward when coasting to a stop
     if (!inputs.accelerate && !inputs.brake) {
@@ -238,14 +255,14 @@ export class VehiclePhysics {
     this.speed = THREE.MathUtils.clamp(this.speed, -15, 101); // Top speed ~364 km/h
     if (!Number.isFinite(this.speed)) this.speed = 0;
 
-    this.gForceLong = dt > 0.0001 ? (this.speed - prevSpeed) / (dt * this.g) : 0;
+    this.gForceLong = safeDt > 0.0001 ? (this.speed - prevSpeed) / (safeDt * this.g) : 0;
     if (!Number.isFinite(this.gForceLong)) this.gForceLong = 0;
 
     // 8. Lateral Dynamics & Pacejka-Inspired Cornering
     // Slip angle alpha = steerAngle - (lateralVelocity / longitudinalVelocity)
     const turnRate = this.steerAngle * (1.15 + Math.abs(this.speed) * 0.024);
     if (Math.abs(this.speed) > 0.1) {
-      this.heading += turnRate * dt * (this.speed >= 0 ? 1 : -1);
+      this.heading += turnRate * safeDt * (this.speed >= 0 ? 1 : -1);
     }
     if (!Number.isFinite(this.heading)) this.heading = 0;
 
@@ -261,12 +278,12 @@ export class VehiclePhysics {
     this.right.set(this.forward.z, 0, -this.forward.x).normalize();
 
     // 9. Integrate Position
-    this._scratchVec.copy(this.forward).multiplyScalar(this.speed * dt);
+    this._scratchVec.copy(this.forward).multiplyScalar(this.speed * safeDt);
     this.position.add(this._scratchVec);
 
     // Ground elevation clamping along track
     if (Number.isFinite(this._splinePt.y)) {
-      this.position.y = THREE.MathUtils.lerp(this.position.y, this._splinePt.y, dt * 9);
+      this.position.y = THREE.MathUtils.lerp(this.position.y, this._splinePt.y, safeDt * 9);
     }
 
     if (!Number.isFinite(this.position.x) || !Number.isFinite(this.position.y) || !Number.isFinite(this.position.z)) {
@@ -276,85 +293,117 @@ export class VehiclePhysics {
     // 10. Elastic-Plastic Barrier Collision Response
     this.resolveBarrierCollisions(track);
 
+    // Defensive check after barrier collision
+    if (!Number.isFinite(this.heading)) this.heading = 0;
+    if (!Number.isFinite(this.speed)) this.speed = 0;
+    if (!Number.isFinite(this.position.x) || !Number.isFinite(this.position.y) || !Number.isFinite(this.position.z)) {
+      this.position.copy(this._splinePt);
+    }
+
     // 11. Gear & RPM Calculation
     this.updateGearsAndRPM();
 
     // 12. Visual Suspension Roll, Pitch & 4-Wheel Deflections
-    this.pitch = THREE.MathUtils.lerp(this.pitch, -this.gForceLong * 0.038, dt * 10);
-    this.roll = THREE.MathUtils.lerp(this.roll, this.gForceLat * 0.032, dt * 10);
+    this.pitch = THREE.MathUtils.lerp(this.pitch, -this.gForceLong * 0.038, safeDt * 10);
+    this.roll = THREE.MathUtils.lerp(this.roll, this.gForceLat * 0.032, safeDt * 10);
+    if (!Number.isFinite(this.pitch)) this.pitch = 0;
+    if (!Number.isFinite(this.roll)) this.roll = 0;
 
     // High frequency kerb vibration
-    const kerbVibe = this.onKerb ? Math.sin(this.lapTime * 65) * 0.025 : 0;
+    const kerbVibe = this.onKerb && Number.isFinite(this.lapTime) ? Math.sin(this.lapTime * 65) * 0.025 : 0;
 
     // 4-Wheel vertical hub travel offsets (m)
+    const rawOffsets = [
+      -this.pitch * 0.4 + this.roll * 0.3 + kerbVibe,
+      -this.pitch * 0.4 - this.roll * 0.3 + kerbVibe,
+      this.pitch * 0.4 + this.roll * 0.3,
+      this.pitch * 0.4 - this.roll * 0.3
+    ];
     this.suspensionOffsets = [
-      THREE.MathUtils.clamp(-this.pitch * 0.4 + this.roll * 0.3 + kerbVibe, -0.06, 0.06), // FL
-      THREE.MathUtils.clamp(-this.pitch * 0.4 - this.roll * 0.3 + kerbVibe, -0.06, 0.06), // FR
-      THREE.MathUtils.clamp(this.pitch * 0.4 + this.roll * 0.3, -0.06, 0.06),             // RL
-      THREE.MathUtils.clamp(this.pitch * 0.4 - this.roll * 0.3, -0.06, 0.06)              // RR
+      THREE.MathUtils.clamp(Number.isFinite(rawOffsets[0]) ? rawOffsets[0] : 0, -0.06, 0.06),
+      THREE.MathUtils.clamp(Number.isFinite(rawOffsets[1]) ? rawOffsets[1] : 0, -0.06, 0.06),
+      THREE.MathUtils.clamp(Number.isFinite(rawOffsets[2]) ? rawOffsets[2] : 0, -0.06, 0.06),
+      THREE.MathUtils.clamp(Number.isFinite(rawOffsets[3]) ? rawOffsets[3] : 0, -0.06, 0.06)
     ];
 
     // 13. Lap Timer & Sector Detection
-    this.lapTime += dt;
+    this.lapTime += safeDt;
+    if (!Number.isFinite(this.lapTime)) this.lapTime = 0;
+
+    const safeSpeedVal = Number.isFinite(this.speed) ? this.speed : 0;
+    const safeRpmVal = Number.isFinite(this.rpm) ? this.rpm : 4000;
+    const safeBrakeTempVal = Number.isFinite(this.brakeTemp) ? this.brakeTemp : 100;
+    const safeLatGVal = Number.isFinite(this.gForceLat) ? this.gForceLat : 0;
+    const safeLongGVal = Number.isFinite(this.gForceLong) ? this.gForceLong : 0;
+    const safeSlipVal = Number.isFinite(this.tireSlip) ? this.tireSlip : 0;
 
     return {
-      speedKmh: Math.round((Number.isFinite(this.speed) ? this.speed : 0) * 3.6),
-      speedMs: Number.isFinite(this.speed) ? this.speed : 0,
-      gear: this.gear,
-      rpm: Math.round(Number.isFinite(this.rpm) ? this.rpm : 4000),
-      rpmRatio: THREE.MathUtils.clamp(((Number.isFinite(this.rpm) ? this.rpm : 4000) - 4000) / (12500 - 4000), 0, 1),
+      speedKmh: Math.round(safeSpeedVal * 3.6),
+      speedMs: safeSpeedVal,
+      gear: Number.isFinite(this.gear) ? this.gear : 1,
+      rpm: Math.round(safeRpmVal),
+      rpmRatio: THREE.MathUtils.clamp((safeRpmVal - 4000) / (12500 - 4000), 0, 1),
       lapTime: Number.isFinite(this.lapTime) ? this.lapTime : 0,
-      currentSector: this.currentSector,
-      lastSectorTime: this.lastSectorTime,
-      drsActive: this.drsActive,
-      drsAvailable: this.drsAvailable,
-      onKerb: this.onKerb,
-      offTrack: this.offTrack,
-      gForceLat: parseFloat((Number.isFinite(this.gForceLat) ? this.gForceLat : 0).toFixed(2)),
-      gForceLong: parseFloat((Number.isFinite(this.gForceLong) ? this.gForceLong : 0).toFixed(2)),
-      brakeTemp: Math.round(Number.isFinite(this.brakeTemp) ? this.brakeTemp : 100),
-      isLockup: this.isLockup,
-      tireSlip: parseFloat((Number.isFinite(this.tireSlip) ? this.tireSlip : 0).toFixed(2)),
+      currentSector: (this.currentSector === 1 || this.currentSector === 2 || this.currentSector === 3) ? this.currentSector : 1,
+      lastSectorTime: Number.isFinite(this.lastSectorTime) ? this.lastSectorTime : 0,
+      drsActive: !!this.drsActive,
+      drsAvailable: !!this.drsAvailable,
+      onKerb: !!this.onKerb,
+      offTrack: !!this.offTrack,
+      gForceLat: parseFloat(safeLatGVal.toFixed(2)),
+      gForceLong: parseFloat(safeLongGVal.toFixed(2)),
+      brakeTemp: Math.round(safeBrakeTempVal),
+      isLockup: !!this.isLockup,
+      tireSlip: parseFloat(safeSlipVal.toFixed(2)),
       suspensionOffsets: this.suspensionOffsets
     };
   }
 
   private queryTrackPosition(spline: THREE.CatmullRomCurve3, track: Track) {
-    let bestT = this.currentT;
+    let bestT = Number.isFinite(this.currentT) ? this.currentT : 0;
     let minDistSq = Infinity;
     const searchRange = 0.08;
     const samples = 18;
 
     for (let i = 0; i <= samples; i++) {
-      let t = this.currentT - searchRange / 2 + (i / samples) * searchRange;
-      if (t < 0) t += 1;
-      if (t > 1) t -= 1;
+      let rawT = bestT - searchRange / 2 + (i / samples) * searchRange;
+      const t = Math.max(0, Math.min(0.999999, ((rawT % 1) + 1) % 1));
       
       const pt = spline.getPointAt(t);
+      if (!pt || !Number.isFinite(pt.x) || !Number.isFinite(pt.z)) continue;
+
       const dSq = pt.distanceToSquared(this.position);
-      if (dSq < minDistSq) {
+      if (Number.isFinite(dSq) && dSq < minDistSq) {
         minDistSq = dSq;
         bestT = t;
       }
     }
 
-    this.currentT = bestT;
-    this._splinePt.copy(spline.getPointAt(this.currentT));
-    this._splineTangent.copy(spline.getTangentAt(this.currentT)).normalize();
+    this.currentT = Math.max(0, Math.min(0.999999, ((bestT % 1) + 1) % 1));
+    const pt = spline.getPointAt(this.currentT);
+    if (pt && Number.isFinite(pt.x) && Number.isFinite(pt.y) && Number.isFinite(pt.z)) {
+      this._splinePt.copy(pt);
+    }
+    const rawTan = spline.getTangentAt(this.currentT);
+    if (rawTan && Number.isFinite(rawTan.x) && Number.isFinite(rawTan.z) && rawTan.lengthSq() > 0.0001) {
+      this._splineTangent.copy(rawTan).normalize();
+    }
 
     // Distance to spline center
     const lateralDist = Math.sqrt(
       Math.pow(this.position.x - this._splinePt.x, 2) + Math.pow(this.position.z - this._splinePt.z, 2)
     );
 
-    const halfW = track.width * 0.5;
-    this.onKerb = lateralDist > halfW && lateralDist <= halfW + 0.95;
-    this.offTrack = lateralDist > halfW + 0.95;
+    const safeHalfW = Number.isFinite(track.width) && track.width > 0 ? track.width * 0.5 : 3.4;
+    this.onKerb = lateralDist > safeHalfW && lateralDist <= safeHalfW + 0.95;
+    this.offTrack = lateralDist > safeHalfW + 0.95;
 
     // Check sector boundaries
-    if (this.currentT <= track.sectors[0].tEnd) {
+    const s1End = track.sectors?.[0]?.tEnd ?? 0.33;
+    const s2End = track.sectors?.[1]?.tEnd ?? 0.67;
+    if (this.currentT <= s1End) {
       this.currentSector = 1;
-    } else if (this.currentT <= track.sectors[1].tEnd) {
+    } else if (this.currentT <= s2End) {
       this.currentSector = 2;
     } else {
       this.currentSector = 3;
@@ -363,25 +412,28 @@ export class VehiclePhysics {
 
   private evaluateDRS(track: Track, drsRequested: boolean) {
     this.drsAvailable = false;
-    for (const zone of track.drsZones) {
-      if (zone.start > zone.end) {
-        if (this.currentT >= zone.start || this.currentT <= zone.end) {
-          this.drsAvailable = true;
-          break;
-        }
-      } else {
-        if (this.currentT >= zone.start && this.currentT <= zone.end) {
-          this.drsAvailable = true;
-          break;
+    if (Array.isArray(track.drsZones)) {
+      for (const zone of track.drsZones) {
+        if (zone.start > zone.end) {
+          if (this.currentT >= zone.start || this.currentT <= zone.end) {
+            this.drsAvailable = true;
+            break;
+          }
+        } else {
+          if (this.currentT >= zone.start && this.currentT <= zone.end) {
+            this.drsAvailable = true;
+            break;
+          }
         }
       }
     }
 
-    this.drsActive = this.drsAvailable && drsRequested;
+    this.drsActive = this.drsAvailable && !!drsRequested;
   }
 
   private resolveBarrierCollisions(track: Track) {
-    const maxOffset = track.width * 0.5 + 3.25;
+    const safeTrackW = Number.isFinite(track.width) && track.width > 0 ? track.width : 6.8;
+    const maxOffset = safeTrackW * 0.5 + 3.25;
     this._scratchSide.subVectors(this.position, this._splinePt);
     this._scratchSide.y = 0;
     const distFromCenter = this._scratchSide.length();
@@ -399,7 +451,9 @@ export class VehiclePhysics {
 
       // Deflect heading slightly along tangent to prevent dead sticking into wall
       const tanHeading = Math.atan2(this._splineTangent.x, this._splineTangent.z);
-      this.heading = THREE.MathUtils.lerp(this.heading, tanHeading, 0.45);
+      if (Number.isFinite(tanHeading)) {
+        this.heading = THREE.MathUtils.lerp(this.heading, tanHeading, 0.45);
+      }
     }
   }
 
@@ -410,13 +464,14 @@ export class VehiclePhysics {
       return;
     }
 
+    const safeSpeed = Math.max(0, this.speed);
     this.gear = 1;
     for (let g = 1; g <= 8; g++) {
-      if (this.speed < this.gearMaxSpeeds[g] || g === 8) {
+      if (safeSpeed < this.gearMaxSpeeds[g] || g === 8) {
         this.gear = g;
         const prevGearSpeed = this.gearMaxSpeeds[g - 1] || 0;
         const gearSpan = Math.max(1, this.gearMaxSpeeds[g] - prevGearSpeed);
-        const speedInGear = (this.speed - prevGearSpeed) / gearSpan;
+        const speedInGear = (safeSpeed - prevGearSpeed) / gearSpan;
         const safeRatio = Math.max(0, Math.min(1, speedInGear));
         this.rpm = 4500 + safeRatio * 7800;
         break;

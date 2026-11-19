@@ -176,9 +176,14 @@ export class BabylonVehicle {
     brakeTemp: number,
     drsActive: boolean
   ) {
+    const safeSpeed = Number.isFinite(speed) ? speed : 0;
+    const safeSteer = Number.isFinite(steerAngle) ? steerAngle : 0;
+    const safeDt = Number.isFinite(dt) && dt > 0 ? Math.min(dt, 0.05) : 0.016;
+    const safeBrakeTemp = Number.isFinite(brakeTemp) ? brakeTemp : 100;
+
     // Axle rotation
-    const angularSpeed = speed / this.wheelRadius;
-    this.wheelSpin += angularSpeed * dt;
+    const angularSpeed = safeSpeed / this.wheelRadius;
+    this.wheelSpin = (this.wheelSpin + angularSpeed * safeDt) % (Math.PI * 2);
 
     this.wheelFL.rotation.y = this.wheelSpin;
     this.wheelFR.rotation.y = this.wheelSpin;
@@ -186,16 +191,17 @@ export class BabylonVehicle {
     this.wheelRR.rotation.y = this.wheelSpin;
 
     // Front steer angle
-    this.frontSteerNode.rotation.y = steerAngle * 0.44;
+    this.frontSteerNode.rotation.y = safeSteer * 0.44;
 
     // DRS Flap
     this.drsFlap.rotation.x = drsActive ? -0.35 : 0;
     this.drsFlap.position.y = drsActive ? 1.05 : 0.98;
 
     // Brake disc temperature emissive glow (starts at 450 C, peaks at 950 C)
-    const glowRatio = Math.max(0, Math.min(1, (brakeTemp - 450) / 450));
+    const rawRatio = (safeBrakeTemp - 450) / 450;
+    const glowRatio = Number.isFinite(rawRatio) ? Math.max(0, Math.min(1, rawRatio)) : 0;
     this.brakeDiscMat.emissiveIntensity = glowRatio * 4.5;
-    this.brakeDiscMat.emissiveColor = new Color3(1.0, glowRatio * 0.36, 0.0);
+    this.brakeDiscMat.emissiveColor.set(1.0, glowRatio * 0.36, 0.0);
   }
 
   public dispose() {

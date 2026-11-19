@@ -31,6 +31,9 @@ export interface TelemetryData {
   gear: number;
   rpm: number;
   rpmRatio: number;
+  currentT: number;
+  isReverse: boolean;
+  isShifting: boolean;
   lapTime: number;
   currentSector: 1 | 2 | 3;
   lastSectorTime: number;

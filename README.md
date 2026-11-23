@@ -3,6 +3,7 @@
 </p>
 
 <p align="center">
+  <a href="https://layanpro123456.github.io/formula-racing-3d/"><img src="https://img.shields.io/badge/▶_PLAY_LIVE_SIMULATOR-layanpro123456.github.io%2Fformula--racing--3d-E10600?style=for-the-badge&logo=googlechrome&logoColor=white" alt="Play Live Demo"/></a>
   <a href="https://nextjs.org"><img src="https://img.shields.io/badge/Next.js-14.2-black?style=for-the-badge&logo=next.js" alt="Next.js 14"/></a>
   <a href="https://www.babylonjs.com"><img src="https://img.shields.io/badge/Babylon.js-9.0-BB464B?style=for-the-badge&logo=babylon.js" alt="Babylon.js"/></a>
   <a href="https://www.havok.com"><img src="https://img.shields.io/badge/Havok-Physics_WASM-007ACC?style=for-the-badge" alt="Havok Physics WASM"/></a>
@@ -13,8 +14,22 @@
 
 <p align="center">
   <strong>High-Performance Browser-Based 3D Open-Wheel Motorsport Simulator</strong><br>
-  Engineered with Next.js 14, Babylon.js 9, Havok Physics WebAssembly, and Procedural Web Audio.
+  Engineered with Next.js 14, Babylon.js 9, Havok Physics WebAssembly, and Procedural Web Audio.<br><br>
+  🏁 <strong><a href="https://layanpro123456.github.io/formula-racing-3d/">Play Instant In-Browser Demo (No Download Required) &rarr;</a></strong>
 </p>
+
+---
+
+## 🌐 Live Interactive Demo
+
+Experience the full 3D simulation running live at 60/120 FPS directly in your browser:
+
+👉 **[https://layanpro123456.github.io/formula-racing-3d/](https://layanpro123456.github.io/formula-racing-3d/)**
+
+- **Zero Install / Instant Play**: Compiled to a static client-side bundle and hosted globally on GitHub Pages.
+- **Hardware-Accelerated Physics**: Powered by Havok Physics compiled to WebAssembly (WASM).
+- **Plug & Play Controllers**: Native support for Xbox and PlayStation gamepads with dual-motor haptic rumble, plus zero-latency keyboard controls.
+- **6 Championship Circuits**: Ardennes Forest, Riviera Street Circuit, Grand Prix Park, Royal Autodrome, Alpine Ring, and Coastal GP Raceway.
 
 ---
 

@@ -35,6 +35,7 @@ interface BabylonRacingGameProps {
   track: Track;
   sessionMode: "grandprix" | "practice" | "qualifying";
   liveryIndex: number;
+  initialSteeringSensitivity?: number;
   onExitToMenu: () => void;
 }
 

@@ -186,10 +186,35 @@ export function createBabylonTrack(track: Track, spline: Spline3D, scene: Scene)
     asphaltTexture.vScale = 85;
   }
 
+  // High-frequency Procedural Asphalt Normal Bump Map for aggregate micro-facets
+  const asphaltNormalTexture = new DynamicTexture("asphaltNormal", { width: 512, height: 512 }, scene);
+  const nCtx = asphaltNormalTexture.getContext() as CanvasRenderingContext2D;
+  if (nCtx) {
+    const imgData = nCtx.createImageData(512, 512);
+    const data = imgData.data;
+    for (let i = 0; i < data.length; i += 4) {
+      const noiseX = (Math.random() - 0.5) * 44;
+      const noiseY = (Math.random() - 0.5) * 44;
+      data[i] = Math.min(255, Math.max(0, 128 + noiseX));
+      data[i + 1] = Math.min(255, Math.max(0, 128 + noiseY));
+      data[i + 2] = 250;
+      data[i + 3] = 255;
+    }
+    nCtx.putImageData(imgData, 0, 0);
+    asphaltNormalTexture.update();
+    asphaltNormalTexture.uScale = 4;
+    asphaltNormalTexture.vScale = 120;
+  }
+
   const roadMaterial = new PBRMaterial("pbrRoad", scene);
   roadMaterial.albedoTexture = asphaltTexture;
-  roadMaterial.roughness = 0.88;
-  roadMaterial.metallic = 0.08;
+  roadMaterial.bumpTexture = asphaltNormalTexture;
+  roadMaterial.bumpTexture.level = 0.75;
+  roadMaterial.roughness = 0.58;
+  roadMaterial.metallic = 0.12;
+  roadMaterial.clearCoat.isEnabled = true;
+  roadMaterial.clearCoat.intensity = 0.45;
+  roadMaterial.clearCoat.roughness = 0.35;
   roadMesh.material = roadMaterial;
 
   // 2. 3D Kerbs with Alternating Red/White Stripes
@@ -230,8 +255,11 @@ export function createBabylonTrack(track: Track, spline: Spline3D, scene: Scene)
 
   const kerbMat = new PBRMaterial("kerbMat", scene);
   kerbMat.albedoTexture = kerbTex;
-  kerbMat.roughness = 0.68;
-  kerbMat.metallic = 0.05;
+  kerbMat.roughness = 0.42;
+  kerbMat.metallic = 0.08;
+  kerbMat.clearCoat.isEnabled = true;
+  kerbMat.clearCoat.intensity = 0.65;
+  kerbMat.clearCoat.roughness = 0.15;
   leftKerbMesh.material = kerbMat;
   rightKerbMesh.material = kerbMat;
 
@@ -313,9 +341,12 @@ export function createBabylonTrack(track: Track, spline: Spline3D, scene: Scene)
   rightBarrier.parent = root;
 
   const barrierMat = new PBRMaterial("barrierPBR", scene);
-  barrierMat.albedoColor = new Color3(0.88, 0.9, 0.94);
-  barrierMat.metallic = 0.85;
-  barrierMat.roughness = 0.28;
+  barrierMat.albedoColor = new Color3(0.92, 0.94, 0.98);
+  barrierMat.metallic = 0.98;
+  barrierMat.roughness = 0.16;
+  barrierMat.clearCoat.isEnabled = true;
+  barrierMat.clearCoat.intensity = 0.85;
+  barrierMat.clearCoat.roughness = 0.08;
   leftBarrier.material = barrierMat;
   rightBarrier.material = barrierMat;
 

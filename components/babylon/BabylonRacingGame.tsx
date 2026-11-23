@@ -11,9 +11,12 @@ import {
   DirectionalLight,
   TargetCamera,
   ShadowGenerator,
+  CascadedShadowGenerator,
+  CubeTexture,
   GlowLayer
 } from "@babylonjs/core";
 import { DefaultRenderingPipeline } from "@babylonjs/core/PostProcesses/RenderPipeline/Pipelines/defaultRenderingPipeline";
+import { SSAO2RenderingPipeline } from "@babylonjs/core/PostProcesses/RenderPipeline/Pipelines/ssao2RenderingPipeline";
 import { MotionBlurPostProcess } from "@babylonjs/core/PostProcesses/motionBlurPostProcess";
 import { Track } from "@/data/tracks";
 import { build3DCurve, Spline3D } from "@/lib/math/Spline3D";
@@ -230,6 +233,7 @@ export default function BabylonRacingGame({
     let shadowGen: ShadowGenerator | null = null;
     let glowLayer: GlowLayer | null = null;
     let pipeline: DefaultRenderingPipeline | null = null;
+    let ssaoPipeline: SSAO2RenderingPipeline | null = null;
     let motionBlur: MotionBlurPostProcess | null = null;
     let tireSmokeSystem: TireSmokeSystem | null = null;
     let barrierSparkSystem: BarrierSparkSystem | null = null;
@@ -256,18 +260,43 @@ export default function BabylonRacingGame({
         console.warn("Havok Physics fallback to deterministic kinematics:", e);
       }
 
-      // 3. Lighting & Environment
+      // 3. IBL Environment Lighting & Reflection
+      try {
+        const basePath = typeof window !== "undefined" && window.location.pathname.startsWith("/formula-racing-3d")
+          ? "/formula-racing-3d"
+          : "";
+        const envTexture = CubeTexture.CreateFromPrefilteredData(
+          `${basePath}/assets/environment/environmentSpecular.env`,
+          scene
+        );
+        scene.environmentTexture = envTexture;
+        scene.environmentIntensity = 1.25;
+      } catch (err) {
+        console.warn("Could not load local environment texture:", err);
+      }
+
       const ambient = new HemisphericLight("hemiLight", new Vector3(0, 1, 0), scene);
-      ambient.intensity = 0.55;
-      ambient.groundColor = new Color3(0.2, 0.22, 0.2);
+      ambient.intensity = 0.65;
+      ambient.groundColor = new Color3(0.18, 0.2, 0.24);
 
       const sun = new DirectionalLight("sunLight", new Vector3(-1, -2, -1).normalize(), scene);
-      sun.position = new Vector3(80, 100, 50);
-      sun.intensity = 2.0;
+      sun.position = new Vector3(80, 120, 50);
+      sun.intensity = 2.2;
 
-      // Cascaded Shadow Map for crisp vehicle shadows
-      shadowGen = new ShadowGenerator(1024, sun);
-      shadowGen.usePoissonSampling = true;
+      // Cascaded Shadow Map for contact-hardened vehicle & barrier shadows
+      try {
+        const csm = new CascadedShadowGenerator(2048, sun);
+        csm.numCascades = 3;
+        csm.stabilizeCascades = true;
+        csm.useContactHardeningShadow = true;
+        csm.contactHardeningLightSizeUVRatio = 0.05;
+        csm.bias = 0.001;
+        csm.normalBias = 0.005;
+        shadowGen = csm;
+      } catch {
+        shadowGen = new ShadowGenerator(1024, sun);
+        shadowGen.usePoissonSampling = true;
+      }
 
       // Atmospheric Fog
       scene.fogMode = Scene.FOGMODE_EXP2;
@@ -302,23 +331,52 @@ export default function BabylonRacingGame({
         glowLayer.addIncludedOnlyMesh(disc);
       }
 
-      // Default Rendering Pipeline (FXAA Antialiasing + Bloom + ACES Tonemapping + Cinematic Vignette)
+      // Default Rendering Pipeline (FXAA + Bloom + ACES Tonemapping + Chromatic Aberration + Sharpening)
       pipeline = new DefaultRenderingPipeline("defaultPipeline", true, scene, [camera]);
       pipeline.fxaaEnabled = true;
       pipeline.samples = 4;
       pipeline.bloomEnabled = true;
-      pipeline.bloomWeight = 0.28;
-      pipeline.bloomThreshold = 0.78;
-      pipeline.bloomKernel = 48;
+      pipeline.bloomWeight = 0.35;
+      pipeline.bloomThreshold = 0.72;
+      pipeline.bloomKernel = 64;
       pipeline.bloomScale = 0.5;
+
+      pipeline.sharpenEnabled = true;
+      if (pipeline.sharpen) {
+        pipeline.sharpen.edgeAmount = 0.22;
+        pipeline.sharpen.colorAmount = 1.0;
+      }
+
+      pipeline.chromaticAberrationEnabled = true;
+      if (pipeline.chromaticAberration) {
+        pipeline.chromaticAberration.aberrationAmount = 2.4;
+        pipeline.chromaticAberration.radialIntensity = 0.75;
+      }
+
+      pipeline.grainEnabled = true;
+      if (pipeline.grain) {
+        pipeline.grain.intensity = 5.0;
+        pipeline.grain.animated = false;
+      }
 
       pipeline.imageProcessingEnabled = true;
       pipeline.imageProcessing.toneMappingEnabled = true;
       pipeline.imageProcessing.toneMappingType = 1; // ACES Photographic Tonemapping
-      pipeline.imageProcessing.contrast = 1.12;
-      pipeline.imageProcessing.exposure = 1.08;
+      pipeline.imageProcessing.contrast = 1.16;
+      pipeline.imageProcessing.exposure = 1.12;
       pipeline.imageProcessing.vignetteEnabled = true;
-      pipeline.imageProcessing.vignetteWeight = 1.2;
+      pipeline.imageProcessing.vignetteWeight = 1.15;
+
+      // Screen-Space Ambient Occlusion (SSAO2) for ground contact depth
+      try {
+        ssaoPipeline = new SSAO2RenderingPipeline("ssao2", scene, { ssaoRatio: 0.5, blurRatio: 0.5 }, [camera]);
+        ssaoPipeline.radius = 2.2;
+        ssaoPipeline.totalStrength = 1.15;
+        ssaoPipeline.base = 0.12;
+        ssaoPipeline.maxZ = 120;
+      } catch (e) {
+        console.warn("SSAO2 fallback:", e);
+      }
 
       // Velocity-dependent Motion Blur
       try {
@@ -434,7 +492,7 @@ export default function BabylonRacingGame({
           // Update Motion Blur strength based on velocity
           if (motionBlur) {
             const speedRatio = Math.min(1, Math.max(0, (tData.speedMs || 0) / 85));
-            motionBlur.motionStrength = speedRatio * 0.35;
+            motionBlur.motionStrength = speedRatio * 0.65;
           }
 
           // Update Camera Position & Target based on mutable cameraModeRef
@@ -593,6 +651,9 @@ export default function BabylonRacingGame({
       }
       if (motionBlur) {
         motionBlur.dispose();
+      }
+      if (ssaoPipeline) {
+        ssaoPipeline.dispose();
       }
       if (pipeline) {
         pipeline.dispose();

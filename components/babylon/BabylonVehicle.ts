@@ -5,6 +5,8 @@ import {
   Vector3,
   Color3,
   PBRMaterial,
+  StandardMaterial,
+  DynamicTexture,
   TransformNode,
   Mesh,
   Space
@@ -38,64 +40,74 @@ export class BabylonVehicle {
     const livery = LIVERIES[liveryIndex % LIVERIES.length];
     this.root = new TransformNode(name, scene);
 
-    // 1. Automotive Clearcoat Bodywork Material
+    // 1. High-Gloss Automotive Clearcoat Bodywork Material
     this.bodyMat = new PBRMaterial(`${name}_bodyMat`, scene);
     this.bodyMat.albedoColor = Color3.FromHexString(livery.primary);
-    this.bodyMat.metallic = 0.72;
-    this.bodyMat.roughness = 0.18;
+    this.bodyMat.metallic = 0.85;
+    this.bodyMat.roughness = 0.12;
     this.bodyMat.clearCoat.isEnabled = true;
-    this.bodyMat.clearCoat.roughness = 0.05;
+    this.bodyMat.clearCoat.roughness = 0.03;
     this.bodyMat.clearCoat.intensity = 1.0;
 
     this.secondaryMat = new PBRMaterial(`${name}_secondaryMat`, scene);
     this.secondaryMat.albedoColor = Color3.FromHexString(livery.secondary);
-    this.secondaryMat.metallic = 0.65;
-    this.secondaryMat.roughness = 0.22;
+    this.secondaryMat.metallic = 0.78;
+    this.secondaryMat.roughness = 0.15;
     this.secondaryMat.clearCoat.isEnabled = true;
-    this.secondaryMat.clearCoat.roughness = 0.06;
+    this.secondaryMat.clearCoat.roughness = 0.04;
     this.secondaryMat.clearCoat.intensity = 0.95;
 
     this.accentMat = new PBRMaterial(`${name}_accentMat`, scene);
     this.accentMat.albedoColor = Color3.FromHexString(livery.accent);
-    this.accentMat.metallic = 0.6;
-    this.accentMat.roughness = 0.25;
+    this.accentMat.metallic = 0.75;
+    this.accentMat.roughness = 0.18;
+    this.accentMat.clearCoat.isEnabled = true;
+    this.accentMat.clearCoat.roughness = 0.05;
 
     this.carbonMat = new PBRMaterial(`${name}_carbonMat`, scene);
-    this.carbonMat.albedoColor = new Color3(0.06, 0.06, 0.08);
-    this.carbonMat.metallic = 0.35;
-    this.carbonMat.roughness = 0.55;
+    this.carbonMat.albedoColor = new Color3(0.04, 0.04, 0.05);
+    this.carbonMat.metallic = 0.45;
+    this.carbonMat.roughness = 0.38;
+    this.carbonMat.clearCoat.isEnabled = true;
+    this.carbonMat.clearCoat.intensity = 0.75;
+    this.carbonMat.clearCoat.roughness = 0.12;
 
     const rubberMat = new PBRMaterial(`${name}_rubberMat`, scene);
-    rubberMat.albedoColor = new Color3(0.06, 0.06, 0.07);
-    rubberMat.roughness = 0.92;
-    rubberMat.metallic = 0.03;
+    rubberMat.albedoColor = new Color3(0.09, 0.09, 0.1);
+    rubberMat.roughness = 0.48; // Scrubbed slick racing rubber sheen
+    rubberMat.metallic = 0.08;
+    rubberMat.clearCoat.isEnabled = true;
+    rubberMat.clearCoat.intensity = 0.25;
+    rubberMat.clearCoat.roughness = 0.45;
 
     const rimMat = new PBRMaterial(`${name}_rimMat`, scene);
-    rimMat.albedoColor = new Color3(0.12, 0.12, 0.14);
-    rimMat.metallic = 0.92;
-    rimMat.roughness = 0.28;
+    rimMat.albedoColor = new Color3(0.12, 0.13, 0.15);
+    rimMat.metallic = 0.98;
+    rimMat.roughness = 0.14;
+    rimMat.clearCoat.isEnabled = true;
+    rimMat.clearCoat.intensity = 0.9;
 
     const caliperMat = new PBRMaterial(`${name}_caliperMat`, scene);
-    caliperMat.albedoColor = new Color3(0.85, 0.1, 0.1);
-    caliperMat.metallic = 0.4;
-    caliperMat.roughness = 0.3;
+    caliperMat.albedoColor = new Color3(0.9, 0.1, 0.1);
+    caliperMat.metallic = 0.65;
+    caliperMat.roughness = 0.22;
 
     this.helmetMat = new PBRMaterial(`${name}_helmetMat`, scene);
     this.helmetMat.albedoColor = Color3.FromHexString(livery.accent);
-    this.helmetMat.metallic = 0.8;
-    this.helmetMat.roughness = 0.15;
+    this.helmetMat.metallic = 0.85;
+    this.helmetMat.roughness = 0.12;
     this.helmetMat.clearCoat.isEnabled = true;
 
     const visorMat = new PBRMaterial(`${name}_visorMat`, scene);
-    visorMat.albedoColor = new Color3(0.08, 0.12, 0.18);
-    visorMat.metallic = 0.95;
-    visorMat.roughness = 0.08;
+    visorMat.albedoColor = new Color3(0.06, 0.1, 0.16);
+    visorMat.metallic = 0.98;
+    visorMat.roughness = 0.05;
 
     this.brakeDiscMat = new PBRMaterial(`${name}_brakeDiscMat`, scene);
-    this.brakeDiscMat.albedoColor = new Color3(0.24, 0.26, 0.28);
-    this.brakeDiscMat.metallic = 0.88;
-    this.brakeDiscMat.roughness = 0.32;
-    this.brakeDiscMat.emissiveColor = new Color3(1.0, 0.22, 0.0);
+    this.brakeDiscMat.albedoColor = new Color3(0.22, 0.24, 0.26);
+    this.brakeDiscMat.metallic = 0.92;
+    this.brakeDiscMat.roughness = 0.22;
+    this.brakeDiscMat.emissiveColor = new Color3(1.0, 0.25, 0.02);
     this.brakeDiscMat.emissiveIntensity = 0;
 
     this.rainLightMat = new PBRMaterial(`${name}_rainLightMat`, scene);
@@ -174,12 +186,43 @@ export class BabylonVehicle {
     visor.position = new Vector3(0, 0.02, 0.1);
     visor.material = visorMat;
 
-    // F1 Cockpit Steering Wheel Yoke
+    // F1 Cockpit Steering Wheel Yoke with Digital LCD Telemetry Screen
     const steerWheel = MeshBuilder.CreateBox("cockpitWheel", { width: 0.24, height: 0.14, depth: 0.04 }, scene);
     steerWheel.parent = this.root;
     steerWheel.position = new Vector3(0, 0.52, 0.62);
     steerWheel.rotation.x = -Math.PI / 6;
     steerWheel.material = this.carbonMat;
+
+    // Digital Instrument Screen on Steering Wheel
+    const wheelDisplay = MeshBuilder.CreatePlane("wheelDisplay", { width: 0.15, height: 0.08 }, scene);
+    wheelDisplay.parent = steerWheel;
+    wheelDisplay.position = new Vector3(0, 0.01, 0.022);
+    const dispMat = new StandardMaterial(`${name}_steerDispMat`, scene);
+    const dispTex = new DynamicTexture(`${name}_steerDispTex`, { width: 256, height: 128 }, scene);
+    const dCtx = dispTex.getContext() as CanvasRenderingContext2D;
+    if (dCtx) {
+      dCtx.fillStyle = "#050812";
+      dCtx.fillRect(0, 0, 256, 128);
+      // Progressive shift LEDs (green -> yellow -> red -> blue)
+      const leds = ["#22c55e", "#22c55e", "#eab308", "#eab308", "#ef4444", "#3b82f6"];
+      for (let i = 0; i < 6; i++) {
+        dCtx.fillStyle = leds[i];
+        dCtx.fillRect(18 + i * 38, 12, 30, 14);
+      }
+      // Speed & Gear
+      dCtx.fillStyle = "#ffffff";
+      dCtx.font = "bold 56px monospace";
+      dCtx.fillText("1", 112, 86);
+      dCtx.fillStyle = "#22c55e";
+      dCtx.font = "bold 20px monospace";
+      dCtx.fillText("-0.14s", 16, 118);
+      dCtx.fillStyle = "#00f0ff";
+      dCtx.fillText("49 KMH", 152, 118);
+      dispTex.update();
+    }
+    dispMat.diffuseTexture = dispTex;
+    dispMat.emissiveColor = new Color3(1.0, 1.0, 1.0);
+    wheelDisplay.material = dispMat;
 
     // Front Wing Mainplane & Cascades
     const frontWing = MeshBuilder.CreateBox("frontWing", { width: 1.95, height: 0.05, depth: 0.45 }, scene);
@@ -260,6 +303,19 @@ export class BabylonVehicle {
       }, scene);
       nut.parent = wheelMesh;
       nut.material = this.accentMat;
+
+      // Tire Compound Sidewall Color Stripe (Pirelli-style colored sidewall)
+      const sidewallRing = MeshBuilder.CreateTorus(`${wheelName}_sidewall`, {
+        diameter: this.wheelRadius * 1.55,
+        thickness: 0.016,
+        tessellation: 20
+      }, scene);
+      sidewallRing.parent = wheelMesh;
+      sidewallRing.rotation.x = Math.PI / 2;
+      const stripeMat = new StandardMaterial(`${wheelName}_stripeMat`, scene);
+      stripeMat.diffuseColor = Color3.FromHexString(livery.accent);
+      stripeMat.emissiveColor = Color3.FromHexString(livery.accent).scale(0.35);
+      sidewallRing.material = stripeMat;
 
       // Brake Disc
       const disc = MeshBuilder.CreateCylinder(`${wheelName}_disc`, {

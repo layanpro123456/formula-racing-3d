@@ -8,6 +8,8 @@ export class InputManager {
   private keys: Record<string, boolean> = {};
   private activeGamepadIndex: number | null = null;
   private smoothedSteer: number = 0;
+  private mouseSteer: number = 0;
+  public enableMouseSteer: boolean = false;
 
   // Rising-edge button state tracking for single-fire actions
   private lastCameraPressed: boolean = false;
@@ -17,6 +19,27 @@ export class InputManager {
   public onToggleCamera?: () => void;
   public onTogglePause?: () => void;
   public onToggleMute?: () => void;
+
+  public triggerHaptic(durationMs: number = 120, weakMagnitude: number = 0.5, strongMagnitude: number = 0.5): void {
+    if (typeof navigator === "undefined" || typeof navigator.getGamepads !== "function") return;
+    try {
+      const gamepads = navigator.getGamepads();
+      if (this.activeGamepadIndex !== null && gamepads[this.activeGamepadIndex]) {
+        const pad = gamepads[this.activeGamepadIndex];
+        const actuator = (pad as any)?.vibrationActuator;
+        if (actuator && typeof actuator.playEffect === "function") {
+          actuator.playEffect("dual-rumble", {
+            startDelay: 0,
+            duration: durationMs,
+            weakMagnitude: Math.min(1.0, weakMagnitude),
+            strongMagnitude: Math.min(1.0, strongMagnitude)
+          }).catch(() => {});
+        }
+      }
+    } catch {
+      // Haptics not supported or permitted on this device
+    }
+  }
 
   private _onKeyDown = (e: KeyboardEvent) => {
     if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", " ", "e", "E"].includes(e.key)) {
@@ -191,14 +214,20 @@ export class InputManager {
     this.lastPausePressed = padPause;
 
     // 3. Blend Keyboard and Analog Inputs
-    const targetSteer = Math.abs(padSteer) > 0.001 ? padSteer : keySteer;
+    const isPadSteering = Math.abs(padSteer) > 0.001;
     const finalThrottle = Math.max(keyThrottle, padThrottle);
     const finalBrake = Math.max(keyBrake, padBrake);
     const finalDRS = kDRS || padDRS;
 
-    // Smooth steering rate to prevent twitchy steering transitions
-    const steerSmoothingSpeed = Math.abs(targetSteer) > Math.abs(this.smoothedSteer) ? 14 : 18;
-    this.smoothedSteer += (targetSteer - this.smoothedSteer) * Math.min(1.0, safeDt * steerSmoothingSpeed);
+    if (isPadSteering) {
+      // Gamepad analog stick: direct 1:1 mapped analog precision
+      this.smoothedSteer = padSteer;
+    } else {
+      // Keyboard digital inputs: crisp attack (24 rad/s) and fast spring centering (36 rad/s)
+      const targetSteer = keySteer;
+      const steerSpeed = Math.abs(targetSteer) > 0 ? 24 : 36;
+      this.smoothedSteer += (targetSteer - this.smoothedSteer) * Math.min(1.0, safeDt * steerSpeed);
+    }
 
     if (Math.abs(this.smoothedSteer) < 0.0001) this.smoothedSteer = 0;
 

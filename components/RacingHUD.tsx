@@ -39,6 +39,18 @@ export function RacingHUD({
   isCommentaryMuted,
   onToggleCommentary
 }: RacingHUDProps) {
+  const [visibleCommentary, setVisibleCommentary] = React.useState<CommentaryState["latestMessage"] | null>(null);
+  const latestMsg = commentaryState?.latestMessage;
+
+  React.useEffect(() => {
+    if (latestMsg) {
+      setVisibleCommentary(latestMsg);
+      const timer = setTimeout(() => {
+        setVisibleCommentary(null);
+      }, 4200);
+      return () => clearTimeout(timer);
+    }
+  }, [latestMsg]);
   // Sort positions (P1, P2, P3...) based on actual track progress (lap + currentT)
   const leaderboard = useMemo(() => {
     const playerProgress = playerLap + (Number.isFinite(telemetry.currentT) ? telemetry.currentT : 0);
@@ -163,15 +175,15 @@ export function RacingHUD({
         })}
       </div>
 
-      {/* Broadcast Commentary Banner */}
-      {commentaryState?.latestMessage && (
+      {/* Broadcast Team Radio / Commentary Banner */}
+      {visibleCommentary && (
         <div className="commentary-banner">
           <div className="commentary-badge">
             <span className="dot" />
-            <span>COMM: {commentaryState.latestMessage.category}</span>
+            <span>RADIO · {visibleCommentary.category}</span>
           </div>
           <div className="commentary-text">
-            &ldquo;{commentaryState.latestMessage.text}&rdquo;
+            &ldquo;{visibleCommentary.text}&rdquo;
           </div>
         </div>
       )}

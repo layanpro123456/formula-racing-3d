@@ -187,32 +187,37 @@ export const TRACKS: Track[] = [
     color: "#f4a261",
     skyColor: "#8bb9e5",
     groundColor: "#394d3c",
-    width: 5.8,
+    width: 6.2,
     // Steep climb up Sainte Devote to Casino, drop to Grand Hotel Hairpin, Tunnel, and Chicane
     points: [
-      [0, 0, 0],          // Pit straight
-      [14, 0.2, 2],       // Sainte Devote right corner
-      [22, 2.5, 16],      // Beau Rivage steep uphill climb
-      [24, 5.8, 34],      // Massenet left
-      [16, 7.5, 48],      // Casino Square crest
-      [2, 6.2, 52],       // Mirabeau Haute descent begins
-      [-10, 4.0, 46],     // Grand Hotel hairpin (slowest turn in F1)
-      [-8, 2.8, 34],      // Mirabeau Bas
-      [2, 1.8, 24],       // Portier entry
-      [14, 1.0, 14],      // Entering the Tunnel
-      [25, 0.2, 0],       // Tunnel descent flat out
-      [36, -0.2, -25],    // Tunnel exit towards chicane
-      [44, 0.0, -52],     // Nouvelle Chicane braking
-      [38, 0.0, -70],     // Tabac left corner
-      [24, 0.0, -84],     // Louis Chiron / Swimming Pool
-      [8, 0.0, -86],      // Swimming Pool exit chicane
-      [-8, 0.0, -76],     // La Rascasse tight right
-      [-12, 0.0, -50],    // Anthony Noghes final corner
-      [-6, 0.0, -25],     // Pit straight acceleration
-      [0, 0, 0]
+      [0, 0, 0],          // Start / Finish line (Grid)
+      [0, 0, 60],         // Pit straight DRS acceleration
+      [2, 0.1, 120],      // Sainte Devote heavy braking
+      [14, 0.3, 155],     // Sainte Devote apex
+      [28, 2.0, 180],     // Beau Rivage uphill climb begins
+      [42, 5.5, 215],     // Beau Rivage steep rise
+      [48, 8.2, 255],     // Massenet entry crest
+      [40, 9.0, 285],     // Casino Square right
+      [22, 7.8, 300],     // Mirabeau Haute downhill descent
+      [2, 5.2, 290],      // Grand Hotel Hairpin entry
+      [-16, 3.8, 275],    // Grand Hotel Hairpin apex
+      [-10, 2.5, 250],    // Mirabeau Bas
+      [8, 1.6, 230],      // Portier right
+      [26, 0.8, 205],     // Entering Tunnel
+      [42, 0.2, 160],     // Tunnel flat-out sweeping right
+      [52, -0.2, 105],    // Tunnel exit towards chicane
+      [58, 0.0, 50],      // Nouvelle Chicane braking
+      [48, 0.0, 15],      // Tabac fast left
+      [32, 0.0, -25],     // Swimming pool entry
+      [18, 0.0, -55],     // Swimming pool chicane apex
+      [0, 0.0, -80],      // La Rascasse entry
+      [-14, 0.0, -95],    // La Rascasse apex
+      [-16, 0.0, -65],    // Anthony Noghes final corner
+      [-8, 0.0, -30],     // Pit straight acceleration
+      [0, 0, 0]           // Closed loop finish
     ],
     sectors: [
-      { id: 1, name: "Sector 1 (Casino)", tEnd: 0.36 },
+      { id: 1, name: "Sector 1 (Casino)", tEnd: 0.35 },
       { id: 2, name: "Sector 2 (Hairpin & Tunnel)", tEnd: 0.70 },
       { id: 3, name: "Sector 3 (Swimming Pool & Rascasse)", tEnd: 1.0 }
     ],

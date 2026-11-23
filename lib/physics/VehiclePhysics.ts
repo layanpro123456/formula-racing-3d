@@ -102,6 +102,8 @@ export class VehiclePhysics {
   public shiftCooldown: number = 0;
   public shiftCutTimer: number = 0;
   public isShifting: boolean = false;
+  public lateralVelocity: number = 0; // m/s
+  public onBarrierImpact?: (impactSpeed: number) => void;
   public onGearShift?: (newGear: number, oldGear: number) => void;
 
   // Reusable telemetry output object (zero allocations)
@@ -149,6 +151,7 @@ export class VehiclePhysics {
     this.velocity.set(0, 0, 0);
     this.heading = Number.isFinite(startHeading) ? startHeading : 0;
     this.speed = 0;
+    this.lateralVelocity = 0;
     this.steerAngle = 0;
     this.gear = 1;
     this.rpm = 4000;
@@ -208,10 +211,11 @@ export class VehiclePhysics {
     }
 
     // 2. Speed-Sensitive Steering Dynamics
-    // High speeds require progressive aerodynamic steering damping to prevent snap spins
-    const maxSteer = 0.52 / (1.0 + Math.abs(this.speed) * 0.034);
+    // Fast response at low-medium speed, progressive downforce damping at high speed
+    const maxSteer = 0.56 / (1.0 + Math.abs(this.speed) * 0.024);
     const steerTarget = steerInput * maxSteer;
-    this.steerAngle = lerp(this.steerAngle, steerTarget, safeDt * 14);
+    const steerSpeed = Math.abs(steerTarget) < Math.abs(this.steerAngle) ? 26 : 22;
+    this.steerAngle = lerp(this.steerAngle, steerTarget, safeDt * steerSpeed);
 
     // 3. DRS evaluation
     this.evaluateDRS(track, !!inputs.drs);
@@ -323,29 +327,46 @@ export class VehiclePhysics {
     this.speed = clamp(this.speed, -15, 101); // Top speed ~364 km/h
     this.gForceLong = safeDt > 0.0001 ? (this.speed - prevSpeed) / (safeDt * this.g) : 0;
 
-    // 8. Lateral Dynamics & Handling
-    // Pacejka lateral grip with progressive high-speed cornering stability
+    // 8. Lateral Dynamics & Handling (Bicycle model with dynamic lateral slip)
     const turnRate = (this.speed / this.wheelbase) * Math.sin(this.steerAngle);
-    if (Math.abs(this.speed) > 0.1) {
+    if (Math.abs(this.speed) > 1.2) {
       this.heading += turnRate * safeDt;
-    } else if (throttle > 0.01 || brake > 0.01 || Math.abs(this.steerAngle) > 0.05) {
-      // Low-speed breakaway steering to recover from barrier contact or hairpin spin
-      this.heading += this.steerAngle * 2.2 * safeDt * (this.speed < -0.1 ? -1 : 1);
+      // Centripetal acceleration
+      const idealLatAccel = this.speed * turnRate;
+      const maxLatG = (2.2 + (downforce / (this.mass * this.g)) * 1.5) * frictionMu;
+      const maxLatAccel = maxLatG * this.g;
+
+      // If centripetal demand exceeds tire grip limit, slip sideways
+      if (Math.abs(idealLatAccel) > maxLatAccel) {
+        const excessAccel = (Math.abs(idealLatAccel) - maxLatAccel) * Math.sign(idealLatAccel);
+        this.lateralVelocity += excessAccel * safeDt * 0.65;
+      }
+      // Progressive grip damping on lateral slide
+      this.lateralVelocity = lerp(this.lateralVelocity, 0, safeDt * (8.5 * frictionMu));
+    } else {
+      // High-authority low speed / stationary turnaround
+      this.lateralVelocity = 0;
+      if (throttle > 0.01 || brake > 0.01 || Math.abs(steerInput) > 0.05) {
+        const steerDir = this.speed < -0.1 ? -1 : 1;
+        this.heading += steerInput * 3.4 * safeDt * steerDir;
+      }
     }
 
-    this.gForceLat = (this.speed * Math.sin(this.steerAngle) * 4.6) / this.g;
+    this.gForceLat = ((this.speed * Math.sin(this.steerAngle) * 3.8) + (this.lateralVelocity * 2.5)) / this.g;
 
-    // Tire slip intensity for audio and smoke effects
-    const latSlip = Math.abs(this.steerAngle) * (Math.abs(this.speed) / 50);
-    this.tireSlip = clamp(this.isLockup ? 1.0 : latSlip, 0, 1);
+    // Tire slip intensity for audio, sparks, smoke and telemetry
+    const slipRatio = Math.abs(this.lateralVelocity) / (Math.abs(this.speed) + 2.0);
+    const steerSlip = Math.abs(this.steerAngle) * (Math.abs(this.speed) / 45);
+    this.tireSlip = clamp(this.isLockup ? 1.0 : (slipRatio * 1.6 + steerSlip * 0.4), 0, 1);
 
     // Forward and Right unit vectors
     this.forward.set(Math.sin(this.heading), 0, Math.cos(this.heading)).normalize();
     this.right.set(this.forward.z, 0, -this.forward.x).normalize();
 
-    // 9. Integrate Vehicle Position
+    // 9. Integrate Vehicle Position with forward and lateral velocity
     this._scratchVec.copyFrom(this.forward).scaleInPlace(this.speed * safeDt);
-    this.position.addInPlace(this._scratchVec);
+    this._scratchSide.copyFrom(this.right).scaleInPlace(this.lateralVelocity * safeDt);
+    this.position.addInPlace(this._scratchVec).addInPlace(this._scratchSide);
 
     // 10. Track Query & Surface Classification (Executed AFTER position integration)
     this.queryTrackPosition(spline, track);
@@ -466,29 +487,40 @@ export class VehiclePhysics {
     const kerbW = 0.95;
     const runoffW = 3.0;
     const barrierOffset = halfW + kerbW + runoffW; // Exact match with 3D Armco tube position
+    const carHalfWidth = 0.88; // Physical car body half-width
+
+    const effectiveLimit = barrierOffset - carHalfWidth;
 
     // Non-radial barrier collision: deflect purely in the lateral normal direction
-    if (this.lateralDistance > barrierOffset) {
+    if (this.lateralDistance > effectiveLimit) {
       const sign = this.signedLateralDistance >= 0 ? 1 : -1;
-      const excess = this.lateralDistance - (barrierOffset - 0.08);
+      const penetration = this.lateralDistance - effectiveLimit;
 
-      // Correct position strictly perpendicular to centerline without longitudinal shift
-      this.position.x -= sign * excess * this._splineNormal.x;
-      this.position.z -= sign * excess * this._splineNormal.z;
+      // 1. Immediately push vehicle inside barrier with a small safety margin
+      this.position.x -= sign * (penetration + 0.06) * this._splineNormal.x;
+      this.position.z -= sign * (penetration + 0.06) * this._splineNormal.z;
 
       // Update stored lateral distance
-      this.lateralDistance = barrierOffset - 0.08;
+      this.lateralDistance = effectiveLimit - 0.06;
       this.signedLateralDistance = sign * this.lateralDistance;
 
-      // Realistic wall friction deceleration only at speed
-      if (Math.abs(this.speed) > 2.0) {
-        this.speed = Math.max(0, this.speed - 24 * dt);
+      // 2. Elastic bounce impulse: reverse and dampen lateral velocity
+      const impactSpeed = Math.abs(this.speed);
+      if (Math.abs(this.lateralVelocity) > 0.2) {
+        this.lateralVelocity = -this.lateralVelocity * 0.35;
       }
 
-      // Deflect heading slightly along tangent to slide smoothly along barrier
-      const tanHeading = Math.atan2(this._splineTangent.x, this._splineTangent.z);
-      if (Number.isFinite(tanHeading)) {
-        this.heading = lerp(this.heading, tanHeading, dt * 7);
+      // 3. Wall friction: decelerate tangentially without freezing the car
+      if (impactSpeed > 1.5) {
+        this.speed = Math.max(0, this.speed - Math.min(this.speed * 0.5, 26 * dt));
+        this.onBarrierImpact?.(impactSpeed);
+      }
+
+      // 4. Glancing deflection away from barrier if heading is pointed into it:
+      const forwardDotOutward = this.forward.x * (sign * this._splineNormal.x) + this.forward.z * (sign * this._splineNormal.z);
+      if (forwardDotOutward > 0.05) {
+        const bounceSign = sign > 0 ? -1 : 1;
+        this.heading += bounceSign * 1.8 * dt;
       }
     }
   }

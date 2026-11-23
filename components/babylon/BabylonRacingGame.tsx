@@ -264,15 +264,23 @@ export default function BabylonRacingGame({
         glowLayer.addIncludedOnlyMesh(disc);
       }
 
-      // Default Rendering Pipeline (FXAA Antialiasing + Bloom)
+      // Default Rendering Pipeline (FXAA Antialiasing + Bloom + ACES Tonemapping + Cinematic Vignette)
       pipeline = new DefaultRenderingPipeline("defaultPipeline", true, scene, [camera]);
       pipeline.fxaaEnabled = true;
       pipeline.samples = 4;
       pipeline.bloomEnabled = true;
-      pipeline.bloomWeight = 0.22;
-      pipeline.bloomThreshold = 0.82;
+      pipeline.bloomWeight = 0.28;
+      pipeline.bloomThreshold = 0.78;
       pipeline.bloomKernel = 48;
       pipeline.bloomScale = 0.5;
+
+      pipeline.imageProcessingEnabled = true;
+      pipeline.imageProcessing.toneMappingEnabled = true;
+      pipeline.imageProcessing.toneMappingType = 1; // ACES Photographic Tonemapping
+      pipeline.imageProcessing.contrast = 1.12;
+      pipeline.imageProcessing.exposure = 1.08;
+      pipeline.imageProcessing.vignetteEnabled = true;
+      pipeline.imageProcessing.vignetteWeight = 1.2;
 
       // Velocity-dependent Motion Blur
       try {
@@ -300,6 +308,12 @@ export default function BabylonRacingGame({
       // Connect physical automatic gearbox shift transitions to engine shift cut sound
       physicsRef.current.onGearShift = () => {
         engineAudio.playGearShift();
+      };
+
+      // Connect physical barrier collision to controller haptic feedback
+      physicsRef.current.onBarrierImpact = (impactSpeed: number) => {
+        const intensity = Math.min(1.0, impactSpeed / 25);
+        inputManager.triggerHaptic(180, intensity * 0.6, intensity);
       };
 
       // Initialize AI Grid
@@ -373,8 +387,9 @@ export default function BabylonRacingGame({
             tireSmokeSystem.update(tData.tireSlip, (inputs.brake ?? 0) > 0.1, tData.speedMs);
           }
           if (barrierSparkSystem) {
-            const isNearBarrier = physicsRef.current.lateralDistance > (track.width * 0.5 + 3.8);
-            barrierSparkSystem.update(isNearBarrier, tData.speedMs);
+            const isNearBarrier = physicsRef.current.lateralDistance > (track.width * 0.5 + 2.7);
+            const isSkidPlank = tData.onKerb || tData.speedMs > 62;
+            barrierSparkSystem.update(isNearBarrier, isSkidPlank, tData.speedMs);
           }
 
           // Update Motion Blur strength based on velocity
@@ -385,29 +400,41 @@ export default function BabylonRacingGame({
 
           // Update Camera Position & Target based on mutable cameraModeRef
           const currentCamMode = cameraModeRef.current;
+          const safeSpeedMs = Number.isFinite(tData.speedMs) ? tData.speedMs : 0;
+
           if (currentCamMode === "chase") {
-            const camX = px - Math.sin(heading) * 8.5;
-            const camY = py + 4.2;
-            const camZ = pz - Math.cos(heading) * 8.5;
+            // Low, dynamic chase camera (5.2m back, 1.85m high)
+            const camDist = 5.2;
+            const camHeight = 1.85;
+            // High-speed chassis shake / road texture vibration
+            const speedShake = safeSpeedMs > 55 ? (Math.sin(performance.now() * 0.05) * 0.015 * ((safeSpeedMs - 55) / 35)) : 0;
+            const camX = px - Math.sin(heading) * camDist;
+            const camY = py + camHeight + speedShake;
+            const camZ = pz - Math.cos(heading) * camDist;
+
             camDesired.set(camX, camY, camZ);
-            camTarget.set(px, py + 1.2, pz);
-            Vector3.LerpToRef(camera.position, camDesired, 1 - Math.exp(-8 * dt), camera.position);
-            Vector3.LerpToRef(camTargetCurrent, camTarget, 1 - Math.exp(-12 * dt), camTargetCurrent);
+            camTarget.set(px + Math.sin(heading) * 1.5, py + 0.95, pz + Math.cos(heading) * 1.5);
+
+            Vector3.LerpToRef(camera.position, camDesired, 1 - Math.exp(-9 * dt), camera.position);
+            Vector3.LerpToRef(camTargetCurrent, camTarget, 1 - Math.exp(-14 * dt), camTargetCurrent);
             camera.setTarget(camTargetCurrent);
-            const safeSpeedMs = Number.isFinite(tData.speedMs) ? tData.speedMs : 0;
-            camera.fov = 1.05 + (safeSpeedMs / 95) * 0.25;
+
+            // Speed FOV expansion (62 deg to 78 deg)
+            camera.fov = 1.08 + (safeSpeedMs / 95) * 0.28;
           } else if (currentCamMode === "cockpit") {
-            camDesired.set(px, py + 0.76, pz);
-            camTarget.set(px + Math.sin(heading) * 15, py + 0.76, pz + Math.cos(heading) * 15);
+            // Cockpit / Halo view over steering wheel
+            camDesired.set(px, py + 0.68, pz + Math.cos(heading) * 0.2);
+            camTarget.set(px + Math.sin(heading) * 16, py + 0.68, pz + Math.cos(heading) * 16);
             camera.position.copyFrom(camDesired);
             camera.setTarget(camTarget);
             camera.fov = 1.25;
           } else {
-            camDesired.set(px, py + 0.45, pz);
-            camTarget.set(px + Math.sin(heading) * 18, py + 0.35, pz + Math.cos(heading) * 18);
+            // Front wing / Nose cone bumper view
+            camDesired.set(px + Math.sin(heading) * 2.1, py + 0.38, pz + Math.cos(heading) * 2.1);
+            camTarget.set(px + Math.sin(heading) * 20, py + 0.32, pz + Math.cos(heading) * 20);
             camera.position.copyFrom(camDesired);
             camera.setTarget(camTarget);
-            camera.fov = 1.4;
+            camera.fov = 1.38;
           }
 
           // Engine Audio

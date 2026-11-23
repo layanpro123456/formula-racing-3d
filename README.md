@@ -273,7 +273,9 @@ formula-racing-3d/
 ├── public/
 │   ├── HavokPhysics.wasm        # Havok physics WebAssembly binary
 │   ├── logo.svg                 # Vector brand logo
+│   ├── social_preview.jpg       # OpenGraph 16:9 social media promotional banner
 │   └── screenshots/             # High-resolution visual showcase captures
+│       ├── social_preview.jpg   # 16:9 promotional showcase banner
 │       ├── gameplay_chase.png   # Low chase action view with minimap
 │       ├── menu.png             # Paddock garage circuit & sensitivity setup
 │       ├── pause_menu.png       # Mid-race pause & live sensitivity slider

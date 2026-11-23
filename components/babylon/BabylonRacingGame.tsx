@@ -67,6 +67,7 @@ export default function BabylonRacingGame({
   track,
   sessionMode,
   liveryIndex,
+  initialSteeringSensitivity = 1.0,
   onExitToMenu
 }: BabylonRacingGameProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -81,6 +82,20 @@ export default function BabylonRacingGame({
   const countdownRef = useRef<number | null>(sessionMode === "grandprix" ? 3 : null);
   const [isPaused, setIsPaused] = useState(false);
   const [isFinished, setIsFinished] = useState(false);
+  const [steeringSensitivity, setSteeringSensitivity] = useState<number>(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const saved = localStorage.getItem("f1_steering_sensitivity");
+        if (saved) {
+          const parsed = parseFloat(saved);
+          if (!isNaN(parsed) && parsed >= 0.5 && parsed <= 1.5) {
+            return parsed;
+          }
+        }
+      } catch {}
+    }
+    return initialSteeringSensitivity;
+  });
 
   // Mutable refs decoupled from React rendering
   const cameraModeRef = useRef<CameraMode>("chase");
@@ -127,6 +142,25 @@ export default function BabylonRacingGame({
     const enabled = raceCommentary.toggleMute();
     setIsCommentaryMuted(!enabled);
   }, []);
+
+  const handleSensitivityChange = useCallback((val: number) => {
+    setSteeringSensitivity(val);
+    inputManager.steeringSensitivity = val;
+    if (physicsRef.current) {
+      physicsRef.current.steeringSensitivity = val;
+    }
+    try {
+      localStorage.setItem("f1_steering_sensitivity", val.toString());
+    } catch {}
+  }, [inputManager]);
+
+  // Synchronize steering sensitivity to active input & physics subsystems
+  useEffect(() => {
+    inputManager.steeringSensitivity = steeringSensitivity;
+    if (physicsRef.current) {
+      physicsRef.current.steeringSensitivity = steeringSensitivity;
+    }
+  }, [inputManager, steeringSensitivity]);
 
   // Connect Commentary listener
   useEffect(() => {
@@ -301,6 +335,7 @@ export default function BabylonRacingGame({
       const startTan = spline.getTangentAt(0);
       const startHeading = Math.atan2(startTan.x, startTan.z);
 
+      physicsRef.current.steeringSensitivity = steeringSensitivity;
       physicsRef.current.reset(
         startPt,
         startHeading
@@ -596,9 +631,55 @@ export default function BabylonRacingGame({
       {/* Paused Modal */}
       {isPaused && (
         <div className="modal-backdrop">
-          <div className="modal">
+          <div className="modal pause-menu-modal">
             <p className="eyebrow">BABYLON.JS HAVOK ENGINE</p>
             <h2>SESSION PAUSED</h2>
+
+            {/* Steering Sensitivity Live Control */}
+            <div className="pause-sensitivity-section">
+              <div className="form-header-row">
+                <label>STEERING SENSITIVITY</label>
+                <span className="sensitivity-badge">
+                  {Math.round(steeringSensitivity * 100)}%
+                  {steeringSensitivity <= 0.75 ? " (SMOOTH)" : steeringSensitivity >= 1.25 ? " (SHARP)" : " (BALANCED)"}
+                </span>
+              </div>
+              <div className="slider-container">
+                <input
+                  type="range"
+                  min="0.5"
+                  max="1.5"
+                  step="0.05"
+                  value={steeringSensitivity}
+                  onChange={(e) => handleSensitivityChange(parseFloat(e.target.value))}
+                  className="f1-range-slider"
+                />
+              </div>
+              <div className="pills-group" style={{ marginTop: "10px" }}>
+                <button
+                  type="button"
+                  className={`pill-btn ${Math.abs(steeringSensitivity - 0.7) < 0.04 ? "active" : ""}`}
+                  onClick={() => handleSensitivityChange(0.7)}
+                >
+                  SMOOTH (70%)
+                </button>
+                <button
+                  type="button"
+                  className={`pill-btn ${Math.abs(steeringSensitivity - 1.0) < 0.04 ? "active" : ""}`}
+                  onClick={() => handleSensitivityChange(1.0)}
+                >
+                  STANDARD (100%)
+                </button>
+                <button
+                  type="button"
+                  className={`pill-btn ${Math.abs(steeringSensitivity - 1.3) < 0.04 ? "active" : ""}`}
+                  onClick={() => handleSensitivityChange(1.3)}
+                >
+                  SHARP (130%)
+                </button>
+              </div>
+            </div>
+
             <button className="primary-btn" onClick={handleTogglePause}>
               RESUME <span>→</span>
             </button>

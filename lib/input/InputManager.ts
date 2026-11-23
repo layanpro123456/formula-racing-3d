@@ -5,6 +5,7 @@ import { VehicleInputs } from "@/lib/physics/VehiclePhysics";
 
 export class InputManager {
   public deadzone: number = 0.08;
+  public steeringSensitivity: number = 1.0;
   private keys: Record<string, boolean> = {};
   private activeGamepadIndex: number | null = null;
   private smoothedSteer: number = 0;
@@ -218,14 +219,15 @@ export class InputManager {
     const finalThrottle = Math.max(keyThrottle, padThrottle);
     const finalBrake = Math.max(keyBrake, padBrake);
     const finalDRS = kDRS || padDRS;
+    const sens = Math.max(0.4, Math.min(1.8, Number.isFinite(this.steeringSensitivity) ? this.steeringSensitivity : 1.0));
 
     if (isPadSteering) {
-      // Gamepad analog stick: direct 1:1 mapped analog precision
-      this.smoothedSteer = padSteer;
+      // Gamepad analog stick: scaled by sensitivity with clean clamping
+      this.smoothedSteer = Math.max(-1.0, Math.min(1.0, padSteer * sens));
     } else {
-      // Keyboard digital inputs: crisp attack (24 rad/s) and fast spring centering (36 rad/s)
+      // Keyboard digital inputs: crisp attack and fast spring centering scaled by sensitivity
       const targetSteer = keySteer;
-      const steerSpeed = Math.abs(targetSteer) > 0 ? 24 : 36;
+      const steerSpeed = (Math.abs(targetSteer) > 0 ? 24 : 36) * sens;
       this.smoothedSteer += (targetSteer - this.smoothedSteer) * Math.min(1.0, safeDt * steerSpeed);
     }
 

@@ -461,19 +461,39 @@ export default function BabylonRacingGame({
             // Speed FOV expansion (62 deg to 78 deg)
             camera.fov = 1.08 + (safeSpeedMs / 95) * 0.28;
           } else if (currentCamMode === "cockpit") {
-            // Cockpit / Halo view over steering wheel
-            camDesired.set(px, py + 0.68, pz + Math.cos(heading) * 0.2);
-            camTarget.set(px + Math.sin(heading) * 16, py + 0.68, pz + Math.cos(heading) * 16);
+            // Cockpit / Halo eye view looking out over steering wheel and front tires
+            const eyeDist = -0.15;
+            const eyeHeight = 0.84;
+            camDesired.set(
+              px + Math.sin(heading) * eyeDist,
+              py + eyeHeight,
+              pz + Math.cos(heading) * eyeDist
+            );
+            camTarget.set(
+              px + Math.sin(heading) * 20,
+              py + eyeHeight - 0.05,
+              pz + Math.cos(heading) * 20
+            );
             camera.position.copyFrom(camDesired);
             camera.setTarget(camTarget);
             camera.fov = 1.25;
           } else {
-            // Front wing / Nose cone bumper view
-            camDesired.set(px + Math.sin(heading) * 2.1, py + 0.38, pz + Math.cos(heading) * 2.1);
-            camTarget.set(px + Math.sin(heading) * 20, py + 0.32, pz + Math.cos(heading) * 20);
+            // Front wing / Nose cone bumper view forward over tarmac
+            const noseDist = 2.5;
+            const noseHeight = 0.42;
+            camDesired.set(
+              px + Math.sin(heading) * noseDist,
+              py + noseHeight,
+              pz + Math.cos(heading) * noseDist
+            );
+            camTarget.set(
+              px + Math.sin(heading) * 25,
+              py + noseHeight - 0.04,
+              pz + Math.cos(heading) * 25
+            );
             camera.position.copyFrom(camDesired);
             camera.setTarget(camTarget);
-            camera.fov = 1.38;
+            camera.fov = 1.35;
           }
 
           // Engine Audio

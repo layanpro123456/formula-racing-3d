@@ -4,7 +4,9 @@ import React, { useMemo } from "react";
 import { TelemetryData } from "@/lib/physics/VehiclePhysics";
 import { AICarState } from "@/lib/ai/AIDriver";
 import { Track } from "@/data/tracks";
+import { Spline3D } from "@/lib/math/Spline3D";
 import { CommentaryState } from "@/lib/commentary/RaceCommentary";
+import { TrackNavigationMap } from "@/components/TrackNavigationMap";
 
 interface RacingHUDProps {
   telemetry: TelemetryData;
@@ -12,6 +14,7 @@ interface RacingHUDProps {
   totalLaps: number;
   aiCars: AICarState[];
   track: Track;
+  spline?: Spline3D;
   cameraMode: "chase" | "cockpit" | "nose";
   onToggleCamera: () => void;
   onPause: () => void;
@@ -29,6 +32,7 @@ export function RacingHUD({
   totalLaps,
   aiCars,
   track,
+  spline,
   cameraMode,
   onToggleCamera,
   onPause,
@@ -229,8 +233,17 @@ export function RacingHUD({
         </div>
       </div>
 
-      {/* Right Telemetry Block (Laps, Sectors, G-Forces, Timers) */}
+      {/* Right Telemetry & Track Navigation Block */}
       <div className="telemetry-right">
+        {/* Top-Right Track Navigation Minimap */}
+        <TrackNavigationMap
+          track={track}
+          spline={spline}
+          playerT={telemetry.currentT}
+          aiCars={aiCars}
+          currentSector={telemetry.currentSector}
+        />
+
         <div className="hud-card">
           <div className="card-row">
             <span className="lbl">LAP</span>

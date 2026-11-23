@@ -352,6 +352,130 @@ html, body {
 }
 
 /* ==========================================================================
+   TRACK NAVIGATION MINIMAP (TOP RIGHT)
+   ========================================================================== */
+.track-minimap-card {
+  background: rgba(11, 15, 23, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-top: 3px solid #38bdf8;
+  backdrop-filter: blur(14px);
+  border-radius: 6px;
+  padding: 10px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.55);
+}
+
+.minimap-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.minimap-title {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 2px;
+  color: #38bdf8;
+}
+
+.minimap-track-name {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: #cbd5e1;
+}
+
+.minimap-svg-container {
+  width: 100%;
+  height: 145px;
+  position: relative;
+  display: grid;
+  place-items: center;
+}
+
+.minimap-svg {
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.minimap-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  color: #64748b;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  padding-top: 6px;
+}
+
+.minimap-legend {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.legend-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+
+.legend-dot.you {
+  background: #facc15;
+  box-shadow: 0 0 6px #facc15;
+}
+
+.legend-dot.rival {
+  background: #ef4444;
+}
+
+.legend-dot.drs {
+  background: #10b981;
+}
+
+.minimap-sector-tag {
+  color: #38bdf8;
+  font-weight: 800;
+}
+
+.minimap-player-ring {
+  animation: minimap-pulse 1.3s infinite ease-out;
+  transform-origin: center;
+}
+
+@keyframes minimap-pulse {
+  0% {
+    r: 4.5;
+    opacity: 1;
+    stroke-width: 1.8;
+  }
+  70% {
+    r: 9;
+    opacity: 0.15;
+    stroke-width: 1.0;
+  }
+  100% {
+    r: 10;
+    opacity: 0;
+    stroke-width: 0.5;
+  }
+}
+
+/* ==========================================================================
    RIGHT TELEMETRY CARD & CONTROLS
    ========================================================================== */
 .telemetry-right {

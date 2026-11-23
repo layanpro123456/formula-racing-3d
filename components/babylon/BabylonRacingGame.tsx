@@ -580,6 +580,7 @@ export default function BabylonRacingGame({
         totalLaps={totalLaps}
         aiCars={aiCars}
         track={track}
+        spline={spline}
         cameraMode={cameraMode}
         onToggleCamera={handleToggleCamera}
         onPause={handleTogglePause}

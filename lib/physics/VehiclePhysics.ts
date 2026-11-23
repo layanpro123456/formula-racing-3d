@@ -60,6 +60,7 @@ export class VehiclePhysics {
   public heading: number = 0;
   public speed: number = 0;           // m/s
   public steerAngle: number = 0;      // radians
+  public steeringSensitivity: number = 1.0;
   public gear: number = 1;
   public rpm: number = 4000;          // 4000 to 12500 RPM
   public drsActive: boolean = false;
@@ -212,9 +213,10 @@ export class VehiclePhysics {
 
     // 2. Speed-Sensitive Steering Dynamics
     // Fast response at low-medium speed, progressive downforce damping at high speed
-    const maxSteer = 0.56 / (1.0 + Math.abs(this.speed) * 0.024);
+    const sensFactor = Math.max(0.5, Math.min(1.6, Number.isFinite(this.steeringSensitivity) ? this.steeringSensitivity : 1.0));
+    const maxSteer = (0.56 * (0.8 + 0.2 * sensFactor)) / (1.0 + Math.abs(this.speed) * 0.024);
     const steerTarget = steerInput * maxSteer;
-    const steerSpeed = Math.abs(steerTarget) < Math.abs(this.steerAngle) ? 26 : 22;
+    const steerSpeed = (Math.abs(steerTarget) < Math.abs(this.steerAngle) ? 26 : 22) * sensFactor;
     this.steerAngle = lerp(this.steerAngle, steerTarget, safeDt * steerSpeed);
 
     // 3. DRS evaluation

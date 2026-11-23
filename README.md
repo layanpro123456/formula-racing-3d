@@ -41,11 +41,20 @@ Experience the full 3D simulation running live at 60/120 FPS directly in your br
 
 ## 📸 Visual Showcase
 
-### Official Simulator Promotional Poster
+### Official Simulator Promotional Poster (16:9 Landscape)
 *High-resolution composite showcase combining in-race chase action, driver cockpit view, track-level nose cam, paddock garage setup, and simulation architecture specs.*
 
 <p align="center">
-  <img src="public/screenshots/promotional_poster.jpg" alt="Formula Racing 3D Promotional Poster" width="100%" style="border-radius: 8px; box-shadow: 0 10px 30px rgba(0,0,0,0.6);"/>
+  <img src="public/screenshots/promotional_poster.jpg" alt="Formula Racing 3D Promotional Poster Landscape" width="100%" style="border-radius: 8px; box-shadow: 0 10px 30px rgba(0,0,0,0.6);"/>
+</p>
+
+---
+
+### Official Box-Art Poster (Portrait Edition)
+*Vertical presentation format designed for mobile showcases, community feeds, and high-impact visual display.*
+
+<p align="center">
+  <img src="public/screenshots/promotional_poster_portrait.jpg" alt="Formula Racing 3D Promotional Poster Portrait" width="70%" style="max-width: 650px; border-radius: 8px; box-shadow: 0 10px 30px rgba(0,0,0,0.6);"/>
 </p>
 
 ---
@@ -163,10 +172,15 @@ Six accurately modeled championship circuits with true 3D elevation gradients an
 
 ---
 
-### 💥 Dynamic Particle VFX & Post-Processing
-- **Horizontal Tarmac Sparks**: High-velocity titanium floor skid sparks and barrier collision sparks emitted realistically along the asphalt plane.
-- **Volumetric Tire Smoke**: Procedural tire smoke plumes generated during threshold brake lockups and power slides.
-- **Cinematic Pipeline**: Babylon.js Default Rendering Pipeline featuring ACES photographic tonemapping, bloom highlights, subtle vignette, FXAA edge smoothing, and velocity-dependent motion blur.
+### 🌟 AAA Graphics Pipeline, IBL Environment & Shaders
+- **Image-Based Lighting (IBL) & Environment Reflections**: Prefiltered spherical harmonics `.env` environment texture (`environmentSpecular.env`) driving real-time Cook-Torrance microfacet specular reflections across all car clearcoats, alloy wheels, and trackside metals.
+- **Cascaded Shadow Generator (CSM 2048)**: 3-tier cascaded shadow mapping with contact hardening (`useContactHardeningShadow`), producing razor-sharp tire contact shadows directly under the chassis and natural diffuse penumbras along distant kerbs.
+- **Screen-Space Ambient Occlusion (SSAO2)**: Depth buffer ambient occlusion providing realistic ground contact shading for tires, suspension wishbones, and Armco barriers, completely eliminating the "floating car" look.
+- **PBR Asphalt Normal Bump Mapping**: High-frequency procedural tangent-space normal bump maps (`bumpTexture`) simulating aggregate stone micro-facets, paired with low-roughness rubbered racing grooves and a clearcoat layer for authentic specular asphalt sheen.
+- **Automotive Clearcoat & Pirelli-Style Sidewalls**: Multi-layer high-gloss car lacquer (`clearCoat: 1.0`, `roughness: 0.03`), carbon fiber floor undertray, glowing carbon-ceramic brake rotors, and colored tire compound sidewall rings.
+- **Cockpit LCD Telemetry Screen**: Active digital LCD instrument cluster mounted directly on the steering wheel yoke with progressive shift LEDs and telemetry readouts.
+- **Cinematic Post-Processing Pipeline**: Babylon.js Default Rendering Pipeline featuring ACES photographic tonemapping, bloom highlights, subtle vignette, FXAA edge smoothing, edge sharpening, speed lens chromatic aberration, filmic grain, and velocity-dependent motion blur (scaling to `0.65` at top speed).
+- **Dynamic Particle VFX**: High-velocity titanium floor skid sparks and barrier collision sparks emitted along the asphalt plane, plus procedural tire smoke plumes during threshold brake lockups.
 
 ---
 
@@ -280,6 +294,9 @@ formula-racing-3d/
 │   └── physics/
 │       └── VehiclePhysics.ts    # Pacejka tire slip, downforce, gearbox, barriers
 ├── public/
+│   ├── assets/
+│   │   └── environment/
+│   │       └── environmentSpecular.env # Prefiltered IBL environment reflection probe
 │   ├── HavokPhysics.wasm        # Havok physics WebAssembly binary
 │   ├── logo.svg                 # Vector brand logo
 │   ├── promotional_poster.jpg   # Master 1920x1080 promotional showcase poster

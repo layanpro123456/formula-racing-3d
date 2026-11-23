@@ -103,6 +103,7 @@ export default function BabylonRacingGame({
   const isFinishedRef = useRef<boolean>(false);
   const lastTelemetryTimeRef = useRef<number>(0);
   const playerLapRef = useRef<number>(1);
+  const steeringSensitivityRef = useRef<number>(steeringSensitivity);
 
   const physicsRef = useRef(new VehiclePhysics());
   const aiSim = useMemo(() => new AISimulator(), []);
@@ -145,6 +146,7 @@ export default function BabylonRacingGame({
 
   const handleSensitivityChange = useCallback((val: number) => {
     setSteeringSensitivity(val);
+    steeringSensitivityRef.current = val;
     inputManager.steeringSensitivity = val;
     if (physicsRef.current) {
       physicsRef.current.steeringSensitivity = val;
@@ -156,6 +158,7 @@ export default function BabylonRacingGame({
 
   // Synchronize steering sensitivity to active input & physics subsystems
   useEffect(() => {
+    steeringSensitivityRef.current = steeringSensitivity;
     inputManager.steeringSensitivity = steeringSensitivity;
     if (physicsRef.current) {
       physicsRef.current.steeringSensitivity = steeringSensitivity;
@@ -335,7 +338,7 @@ export default function BabylonRacingGame({
       const startTan = spline.getTangentAt(0);
       const startHeading = Math.atan2(startTan.x, startTan.z);
 
-      physicsRef.current.steeringSensitivity = steeringSensitivity;
+      physicsRef.current.steeringSensitivity = steeringSensitivityRef.current;
       physicsRef.current.reset(
         startPt,
         startHeading

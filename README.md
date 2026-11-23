@@ -41,6 +41,15 @@ Experience the full 3D simulation running live at 60/120 FPS directly in your br
 
 ## 📸 Visual Showcase
 
+### Official Simulator Promotional Poster
+*High-resolution composite showcase combining in-race chase action, driver cockpit view, track-level nose cam, paddock garage setup, and simulation architecture specs.*
+
+<p align="center">
+  <img src="public/screenshots/promotional_poster.jpg" alt="Formula Racing 3D Promotional Poster" width="100%" style="border-radius: 8px; box-shadow: 0 10px 30px rgba(0,0,0,0.6);"/>
+</p>
+
+---
+
 ### In-Race Action (Low Chase Camera)
 *Low dynamic chase perspective featuring real-time directional shadows, procedural atmospheric sky, 15-LED shift tachometer, live timing tower, and the top-right vector minimap.*
 
@@ -273,9 +282,12 @@ formula-racing-3d/
 ├── public/
 │   ├── HavokPhysics.wasm        # Havok physics WebAssembly binary
 │   ├── logo.svg                 # Vector brand logo
+│   ├── promotional_poster.jpg   # Master 1920x1080 promotional showcase poster
 │   ├── social_preview.jpg       # OpenGraph 16:9 social media promotional banner
 │   └── screenshots/             # High-resolution visual showcase captures
-│       ├── social_preview.jpg   # 16:9 promotional showcase banner
+│       ├── promotional_poster.jpg          # 1920x1080 landscape showcase poster
+│       ├── promotional_poster_portrait.jpg # 1200x1600 portrait box-art poster
+│       ├── social_preview.jpg   # 16:9 promotional broadcast banner
 │       ├── gameplay_chase.png   # Low chase action view with minimap
 │       ├── menu.png             # Paddock garage circuit & sensitivity setup
 │       ├── pause_menu.png       # Mid-race pause & live sensitivity slider

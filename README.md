@@ -41,6 +41,14 @@ Experience the full 3D simulation running live at 60/120 FPS directly in your br
 
 ## 📸 Visual Showcase
 
+### Gameplay Demo Video
+*In-engine 3D gameplay footage capturing live telemetry, dynamic chase camera action, and real-time circuit racing.*
+
+- **Edited Gameplay Demo (MP4)**: [public/videos/formula_racing_3d_demo.mp4](public/videos/formula_racing_3d_demo.mp4)
+- **Raw Gameplay Capture (WebM)**: [public/videos/raw_gameplay.webm](public/videos/raw_gameplay.webm)
+
+---
+
 ### Official Simulator Promotional Poster (16:9 Landscape)
 *High-resolution composite showcase combining in-race chase action, driver cockpit view, track-level nose cam, paddock garage setup, and simulation architecture specs.*
 
@@ -301,7 +309,7 @@ formula-racing-3d/
 │   ├── logo.svg                 # Vector brand logo
 │   ├── promotional_poster.jpg   # Master 1920x1080 promotional showcase poster
 │   ├── social_preview.jpg       # OpenGraph 16:9 social media promotional banner
-│   └── screenshots/             # High-resolution visual showcase captures
+│   ├── screenshots/             # High-resolution visual showcase captures
 │       ├── promotional_poster.jpg          # 1920x1080 landscape showcase poster
 │       ├── promotional_poster_portrait.jpg # 1200x1600 portrait box-art poster
 │       ├── social_preview.jpg   # 16:9 promotional broadcast banner
@@ -310,6 +318,9 @@ formula-racing-3d/
 │       ├── pause_menu.png       # Mid-race pause & live sensitivity slider
 │       ├── cockpit_view.png     # Cockpit & Halo driver view
 │       └── nose_cam.png         # Front nose bumper camera
+│   └── videos/                  # Gameplay demo and raw capture videos
+│       ├── formula_racing_3d_demo.mp4      # Edited gameplay demo video
+│       └── raw_gameplay.webm               # Raw gameplay capture
 ├── ARCHITECTURE.md              # Graphics & simulation mathematical architecture
 ├── CONTRIBUTING.md              # Engineering guidelines & invariant standards
 ├── ROADMAP.md                   # Future milestones & development roadmap

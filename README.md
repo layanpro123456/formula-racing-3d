@@ -50,7 +50,7 @@ Experience the full 3D simulation running live at 60/120 FPS directly in your br
 ---
 
 ### Official Simulator Promotional Poster (16:9 Landscape)
-*High-resolution composite showcase combining in-race chase action, driver cockpit view, track-level nose cam, paddock garage setup, and simulation architecture specs.*
+*High-resolution landscape showcase pairing the twilight open-wheel scene with the live Ardennes Forest Catmull-Rom spline and deterministic simulation architecture specs.*
 
 <p align="center">
   <img src="public/screenshots/promotional_poster.jpg" alt="Formula Racing 3D Promotional Poster Landscape" width="100%" style="border-radius: 8px; box-shadow: 0 10px 30px rgba(0,0,0,0.6);"/>
@@ -58,8 +58,8 @@ Experience the full 3D simulation running live at 60/120 FPS directly in your br
 
 ---
 
-### Official Box-Art Poster (Portrait Edition)
-*Vertical presentation format designed for mobile showcases, community feeds, and high-impact visual display.*
+### Official Box-Art & LinkedIn Poster (4:5 Portrait Edition)
+*Vertical 4:5 presentation format (`1200x1500` / `2400x3000` LinkedIn PNG) designed for social feeds, mobile showcases, and technical architecture highlights.*
 
 <p align="center">
   <img src="public/screenshots/promotional_poster_portrait.jpg" alt="Formula Racing 3D Promotional Poster Portrait" width="70%" style="max-width: 650px; border-radius: 8px; box-shadow: 0 10px 30px rgba(0,0,0,0.6);"/>
@@ -340,11 +340,12 @@ formula-racing-3d/
 │   ├── logo.svg                 # Vector brand logo
 │   ├── manifest.json            # Fullscreen landscape PWA web app manifest
 │   ├── promotional_poster.jpg   # Master 1920x1080 promotional showcase poster
-│   ├── social_preview.jpg       # OpenGraph 16:9 social media promotional banner
+│   ├── social_preview.jpg       # OpenGraph 1200x675 social media banner
 │   ├── screenshots/             # High-resolution visual showcase captures
+│       ├── linkedin_poster.png             # 2400x3000 (4:5) high-DPI LinkedIn poster
 │       ├── promotional_poster.jpg          # 1920x1080 landscape showcase poster
-│       ├── promotional_poster_portrait.jpg # 1200x1600 portrait box-art poster
-│       ├── social_preview.jpg   # 16:9 promotional broadcast banner
+│       ├── promotional_poster_portrait.jpg # 1200x1500 portrait showcase poster
+│       ├── social_preview.jpg   # 1200x675 OpenGraph banner
 │       ├── gameplay_chase.png   # Low chase action view with minimap
 │       ├── menu.png             # Paddock garage circuit & sensitivity setup
 │       ├── pause_menu.png       # Mid-race pause & live sensitivity slider

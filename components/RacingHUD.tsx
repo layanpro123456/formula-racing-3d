@@ -8,6 +8,18 @@ import { Spline3D } from "@/lib/math/Spline3D";
 import { CommentaryState } from "@/lib/commentary/RaceCommentary";
 import { TrackNavigationMap } from "@/components/TrackNavigationMap";
 
+export interface CollisionAlert {
+  id: number;
+  opponentName: string;
+  opponentNumber: number;
+  penaltyAdded: number;
+  totalPenalty: number;
+  warnings: number;
+  warningIssued: boolean;
+  playerAtFault: boolean;
+  severity: number;
+}
+
 interface RacingHUDProps {
   telemetry: TelemetryData;
   playerLap: number;
@@ -27,6 +39,8 @@ interface RacingHUDProps {
   touchControlsActive?: boolean;
   isFullscreen?: boolean;
   onToggleFullscreen?: () => void;
+  collisionAlert?: CollisionAlert | null;
+  impactFlashSeq?: number;
 }
 
 export function RacingHUD({
@@ -47,10 +61,20 @@ export function RacingHUD({
   onToggleCommentary,
   touchControlsActive = false,
   isFullscreen = false,
-  onToggleFullscreen
+  onToggleFullscreen,
+  collisionAlert = null,
+  impactFlashSeq = 0
 }: RacingHUDProps) {
   const [visibleCommentary, setVisibleCommentary] = React.useState<CommentaryState["latestMessage"] | null>(null);
+  const [showImpactFlash, setShowImpactFlash] = React.useState(false);
   const latestMsg = commentaryState?.latestMessage;
+
+  React.useEffect(() => {
+    if (!impactFlashSeq) return;
+    setShowImpactFlash(true);
+    const timer = setTimeout(() => setShowImpactFlash(false), 420);
+    return () => clearTimeout(timer);
+  }, [impactFlashSeq]);
 
   React.useEffect(() => {
     if (latestMsg) {
@@ -72,6 +96,7 @@ export function RacingHUD({
         number: 1,
         lap: playerLap,
         progress: playerProgress,
+        penaltySeconds: Number.isFinite(telemetry.penaltySeconds) ? telemetry.penaltySeconds : 0,
         isPlayer: true
       },
       ...aiCars.map((ai) => ({
@@ -80,13 +105,14 @@ export function RacingHUD({
         number: ai.number,
         lap: ai.lap,
         progress: ai.lap + ai.t,
+        penaltySeconds: Number.isFinite(ai.penaltySeconds) ? ai.penaltySeconds : 0,
         isPlayer: false
       }))
     ];
 
     list.sort((a, b) => b.progress - a.progress);
     return list;
-  }, [playerLap, telemetry.currentT, aiCars]);
+  }, [playerLap, telemetry.currentT, telemetry.penaltySeconds, aiCars]);
 
   const playerPos = leaderboard.findIndex((item) => item.isPlayer) + 1;
   const leaderProgress = leaderboard[0]?.progress ?? 0;
@@ -115,6 +141,38 @@ export function RacingHUD({
 
   return (
     <div className={`racing-hud-overlay ${touchControlsActive ? "has-touch-controls" : ""}`}>
+      {/* Screen-Edge Red Collision Impact Pulse */}
+      {showImpactFlash && <div className="collision-flash-overlay" />}
+
+      {/* Race Control Collision & Penalty Incident Banner */}
+      {collisionAlert && (
+        <div
+          className={`race-control-banner ${
+            collisionAlert.penaltyAdded > 0
+              ? "severity-penalty"
+              : collisionAlert.warningIssued
+                ? "severity-warning"
+                : "severity-contact"
+          }`}
+        >
+          <div className="rc-header">
+            <span className="rc-badge">RACE CONTROL</span>
+            <span className="rc-incident">
+              COLLISION · #{collisionAlert.opponentNumber} {collisionAlert.opponentName.toUpperCase()}
+            </span>
+          </div>
+          <div className="rc-verdict">
+            {collisionAlert.penaltyAdded > 0
+              ? `+${collisionAlert.penaltyAdded}s TIME PENALTY — CAUSING A COLLISION (TOTAL: +${collisionAlert.totalPenalty}s)`
+              : collisionAlert.warningIssued
+                ? `DRIVING STANDARDS WARNING (${collisionAlert.warnings}) — NEXT CONTACT +2s PENALTY`
+                : collisionAlert.playerAtFault
+                  ? "MINOR CONTACT — AVOIDABLE COLLISION RISK"
+                  : "INCIDENT NOTED — NO FURTHER ACTION"}
+          </div>
+        </div>
+      )}
+
       {/* 5-Red-Lights Countdown Sequence Overlay */}
       {countdown !== null && (
         <div className="countdown-backdrop">
@@ -149,6 +207,10 @@ export function RacingHUD({
           <span className="compact-pos-badge">P{playerPos}/{leaderboard.length}</span>
         </div>
         <div className="f1-status-flags">
+          {telemetry.penaltySeconds > 0 && (
+            <span className="flag penalty">PENALTY +{telemetry.penaltySeconds}S</span>
+          )}
+          {telemetry.drsLocked && <span className="flag drs-locked">DRS LOCKED</span>}
           {telemetry.isLockup && <span className="flag lockup">TYRE LOCKUP</span>}
           {telemetry.offTrack && <span className="flag off-track">OFF TRACK</span>}
           {telemetry.onKerb && <span className="flag kerb">KERB</span>}
@@ -179,6 +241,9 @@ export function RacingHUD({
               <span className="pos">P{idx + 1}</span>
               <span className="driver-name">
                 <span className="driver-num">#{item.number}</span> {item.name}
+                {item.penaltySeconds > 0 && (
+                  <span className="tower-penalty">+{item.penaltySeconds}s</span>
+                )}
               </span>
               <span className="gap">
                 {idx === 0 ? "LEADER" : `+${gapSecs}s`}
@@ -279,6 +344,16 @@ export function RacingHUD({
             <span className="lbl">BRAKES</span>
             <span className={`val mono ${displayBrakeTemp > 700 ? "brake-hot" : displayBrakeTemp > 450 ? "brake-warm" : "brake-optimal"}`}>
               {displayBrakeTemp}°C
+            </span>
+          </div>
+          <div className="card-row">
+            <span className="lbl">PENALTY</span>
+            <span className={`val mono ${telemetry.penaltySeconds > 0 ? "penalty-active" : telemetry.warnings > 0 ? "penalty-warn" : "penalty-clean"}`}>
+              {telemetry.penaltySeconds > 0
+                ? `+${telemetry.penaltySeconds.toFixed(1)}s`
+                : telemetry.warnings > 0
+                  ? `WARN ${telemetry.warnings}`
+                  : "CLEAN"}
             </span>
           </div>
           <div className="card-row g-forces">

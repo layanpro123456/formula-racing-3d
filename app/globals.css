@@ -163,6 +163,128 @@ html, body {
   color: #6ee7b7;
 }
 
+.flag.penalty {
+  background: #b91c1c;
+  color: #fef2f2;
+  border: 1px solid #f87171;
+  box-shadow: 0 0 16px rgba(239, 68, 68, 0.75);
+}
+
+.flag.drs-locked {
+  background: rgba(245, 158, 11, 0.25);
+  border: 1px solid #f59e0b;
+  color: #fde68a;
+}
+
+/* ==========================================================================
+   COLLISION FLASH OVERLAY & RACE CONTROL BANNER
+   ========================================================================== */
+.collision-flash-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 45;
+  pointer-events: none;
+  background: radial-gradient(circle at center, transparent 48%, rgba(239, 68, 68, 0.55) 100%);
+  box-shadow: inset 0 0 80px rgba(220, 38, 38, 0.85);
+  animation: collision-flash 0.42s ease-out forwards;
+}
+
+@keyframes collision-flash {
+  0% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+.race-control-banner {
+  position: absolute;
+  z-index: 40;
+  top: 72px;
+  left: 50%;
+  transform: translateX(-50%);
+  min-width: min(460px, 88vw);
+  max-width: 92vw;
+  background: rgba(10, 14, 22, 0.95);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-left: 5px solid #ef4444;
+  border-radius: 6px;
+  padding: 10px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  backdrop-filter: blur(14px);
+  box-shadow: 0 16px 38px rgba(0, 0, 0, 0.72);
+  pointer-events: none;
+  animation: rc-slide-down 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.race-control-banner.severity-warning {
+  border-left-color: #f59e0b;
+}
+
+.race-control-banner.severity-contact {
+  border-left-color: #38bdf8;
+}
+
+@keyframes rc-slide-down {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -14px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+
+.rc-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.rc-badge {
+  background: #e10600;
+  color: #fff;
+  padding: 2px 8px;
+  border-radius: 2px;
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 1.5px;
+}
+
+.race-control-banner.severity-warning .rc-badge {
+  background: #f59e0b;
+  color: #000;
+}
+
+.race-control-banner.severity-contact .rc-badge {
+  background: #0284c7;
+  color: #fff;
+}
+
+.rc-incident {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: 1.5px;
+  color: #f8fafc;
+}
+
+.rc-verdict {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  font-weight: 700;
+  color: #fca5a5;
+}
+
+.race-control-banner.severity-warning .rc-verdict {
+  color: #fcd34d;
+}
+
+.race-control-banner.severity-contact .rc-verdict {
+  color: #bae6fd;
+}
+
 @keyframes pulse-flag {
   0% { opacity: 0.85; }
   100% { opacity: 1; transform: scale(1.02); }
@@ -242,6 +364,20 @@ html, body {
   font-family: 'JetBrains Mono', monospace;
   font-size: 12px;
   color: #cbd5e1;
+}
+
+.tower-penalty {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 5px;
+  border-radius: 2px;
+  background: rgba(239, 68, 68, 0.22);
+  border: 1px solid rgba(239, 68, 68, 0.6);
+  color: #fca5a5;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  font-weight: 700;
+  vertical-align: middle;
 }
 
 /* ==========================================================================
@@ -587,6 +723,19 @@ html, body {
   color: #ef4444;
   text-shadow: 0 0 10px rgba(239, 68, 68, 0.6);
   animation: pulse-flag 0.8s infinite alternate;
+}
+
+.val.mono.penalty-clean {
+  color: #22c55e;
+}
+
+.val.mono.penalty-warn {
+  color: #f59e0b;
+}
+
+.val.mono.penalty-active {
+  color: #ef4444;
+  text-shadow: 0 0 10px rgba(239, 68, 68, 0.6);
 }
 
 .sector-badges {
@@ -1265,7 +1414,35 @@ html, body {
   font-size: 24px;
   font-weight: 800;
   color: #fff;
+  margin-bottom: 14px;
+}
+
+.victory-breakdown {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
   margin-bottom: 20px;
+  padding: 12px 16px;
+  background: rgba(15, 23, 42, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+}
+
+.victory-row {
+  display: flex;
+  justify-content: space-between;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13px;
+  font-weight: 700;
+  color: #cbd5e1;
+}
+
+.victory-row.has-penalty {
+  color: #f87171;
+}
+
+.victory-row.clean {
+  color: #4ade80;
 }
 
 /* ==========================================================================

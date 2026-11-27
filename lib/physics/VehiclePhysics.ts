@@ -47,6 +47,9 @@ export interface TelemetryData {
   isLockup: boolean;      // Inside front wheel locked
   tireSlip: number;      // 0 to 1 slip intensity
   suspensionOffsets: [number, number, number, number]; // FL, FR, RL, RR vertical deflection in meters
+  penaltySeconds: number;
+  warnings: number;
+  drsLocked: boolean;
 }
 
 export class VehiclePhysics {
@@ -104,6 +107,13 @@ export class VehiclePhysics {
   public shiftCutTimer: number = 0;
   public isShifting: boolean = false;
   public lateralVelocity: number = 0; // m/s
+
+  // Race Control Penalties & Incident State
+  public penaltySeconds: number = 0;
+  public warnings: number = 0;
+  public drsLockedTimer: number = 0;
+  public totalRaceTime: number = 0;
+
   public onBarrierImpact?: (impactSpeed: number) => void;
   public onGearShift?: (newGear: number, oldGear: number) => void;
 
@@ -129,7 +139,10 @@ export class VehiclePhysics {
     brakeTemp: 100,
     isLockup: false,
     tireSlip: 0,
-    suspensionOffsets: [0, 0, 0, 0]
+    suspensionOffsets: [0, 0, 0, 0],
+    penaltySeconds: 0,
+    warnings: 0,
+    drsLocked: false
   };
 
   // F1 Vehicle Physical Constants
@@ -172,6 +185,10 @@ export class VehiclePhysics {
     this.brakeTemp = 100;
     this.isLockup = false;
     this.tireSlip = 0;
+    this.penaltySeconds = 0;
+    this.warnings = 0;
+    this.drsLockedTimer = 0;
+    this.totalRaceTime = 0;
     this.suspensionOffsets[0] = 0;
     this.suspensionOffsets[1] = 0;
     this.suspensionOffsets[2] = 0;
@@ -220,6 +237,9 @@ export class VehiclePhysics {
     this.steerAngle = lerp(this.steerAngle, steerTarget, safeDt * steerSpeed);
 
     // 3. DRS evaluation
+    if (this.drsLockedTimer > 0) {
+      this.drsLockedTimer = Math.max(0, this.drsLockedTimer - safeDt);
+    }
     this.evaluateDRS(track, !!inputs.drs);
 
     // 4. Surface Friction & Aerodynamics
@@ -396,6 +416,7 @@ export class VehiclePhysics {
 
     // 14. Lap Timer & Sector Detection
     this.lapTime += safeDt;
+    this.totalRaceTime += safeDt;
 
     // 15. Publish Telemetry Data (Reusing output object without heap allocations)
     const safeSpeedVal = Number.isFinite(this.speed) ? this.speed : 0;
@@ -421,6 +442,9 @@ export class VehiclePhysics {
     this._telemetryData.brakeTemp = Math.round(this.brakeTemp);
     this._telemetryData.isLockup = this.isLockup;
     this._telemetryData.tireSlip = parseFloat((Number.isFinite(this.tireSlip) ? this.tireSlip : 0).toFixed(2));
+    this._telemetryData.penaltySeconds = this.penaltySeconds;
+    this._telemetryData.warnings = this.warnings;
+    this._telemetryData.drsLocked = this.drsLockedTimer > 0;
 
     return this._telemetryData;
   }
@@ -464,6 +488,10 @@ export class VehiclePhysics {
 
   private evaluateDRS(track: Track, drsRequested: boolean) {
     this.drsAvailable = false;
+    if (this.drsLockedTimer > 0) {
+      this.drsActive = false;
+      return;
+    }
     if (Array.isArray(track.drsZones)) {
       for (const zone of track.drsZones) {
         if (zone.start > zone.end) {
@@ -481,6 +509,24 @@ export class VehiclePhysics {
     }
 
     this.drsActive = this.drsAvailable && !!drsRequested;
+  }
+
+  /**
+   * Re-synchronizes spline coordinates and clamps vehicle inside Armco barriers
+   * after external car-to-car collision separation.
+   */
+  public enforceBarrierBounds(track: Track, spline: Spline3D, dt: number): void {
+    this.queryTrackPosition(spline, track);
+    if (Number.isFinite(this._splinePt.y)) {
+      this.position.y = lerp(this.position.y, this._splinePt.y, Math.min(1, dt * 16));
+    }
+    this.resolveBarrierCollisions(track, dt);
+    this._telemetryData.currentT = Number.isFinite(this.currentT) ? this.currentT : 0;
+    this._telemetryData.onKerb = this.onKerb;
+    this._telemetryData.offTrack = this.offTrack;
+    this._telemetryData.penaltySeconds = this.penaltySeconds;
+    this._telemetryData.warnings = this.warnings;
+    this._telemetryData.drsLocked = this.drsLockedTimer > 0;
   }
 
   private resolveBarrierCollisions(track: Track, dt: number) {

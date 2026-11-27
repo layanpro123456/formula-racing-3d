@@ -25,8 +25,9 @@ import { BabylonVehicle } from "./BabylonVehicle";
 import { getHavokPlugin } from "@/lib/babylon/havokLoader";
 import { VehiclePhysics, TelemetryData } from "@/lib/physics/VehiclePhysics";
 import { AISimulator, AICarState } from "@/lib/ai/AIDriver";
+import { CollisionSystem } from "@/lib/physics/CollisionSystem";
 import { engineAudio } from "@/lib/audio/EngineSound";
-import { RacingHUD } from "@/components/RacingHUD";
+import { RacingHUD, CollisionAlert } from "@/components/RacingHUD";
 import { InputManager, TouchSteerScheme } from "@/lib/input/InputManager";
 import { TireSmokeSystem } from "@/lib/effects/TireSmokeSystem";
 import { BarrierSparkSystem } from "@/lib/effects/BarrierSparkSystem";
@@ -70,7 +71,10 @@ const defaultTelemetry: TelemetryData = {
   brakeTemp: 100,
   isLockup: false,
   tireSlip: 0,
-  suspensionOffsets: [0, 0, 0, 0]
+  suspensionOffsets: [0, 0, 0, 0],
+  penaltySeconds: 0,
+  warnings: 0,
+  drsLocked: false
 };
 
 export default function BabylonRacingGame({
@@ -98,6 +102,9 @@ export default function BabylonRacingGame({
   const countdownRef = useRef<number | null>(sessionMode === "grandprix" ? 3 : null);
   const [isPaused, setIsPaused] = useState(false);
   const [isFinished, setIsFinished] = useState(false);
+  const [collisionAlert, setCollisionAlert] = useState<CollisionAlert | null>(null);
+  const [impactFlashSeq, setImpactFlashSeq] = useState(0);
+  const [finalRaceTime, setFinalRaceTime] = useState(0);
   const showTouchControls =
     touchControlMode === "on" || (touchControlMode === "auto" && isTouchDevice);
   const [steeringSensitivity, setSteeringSensitivity] = useState<number>(() => {
@@ -125,8 +132,12 @@ export default function BabylonRacingGame({
 
   const physicsRef = useRef(new VehiclePhysics());
   const aiSim = useMemo(() => new AISimulator(), []);
+  const collisionSystem = useMemo(() => new CollisionSystem(), []);
   const [aiCars, setAiCars] = useState<AICarState[]>([]);
   const inputManager = useMemo(() => new InputManager(), []);
+  const cameraJoltRef = useRef<number>(0);
+  const collisionAlertTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const collisionAlertIdRef = useRef<number>(0);
 
   const spline = useMemo(() => build3DCurve(track.points), [track]);
 
@@ -444,6 +455,8 @@ export default function BabylonRacingGame({
         startPt,
         startHeading
       );
+      collisionSystem.reset();
+      cameraJoltRef.current = 0;
 
       // Connect physical automatic gearbox shift transitions to engine shift cut sound
       physicsRef.current.onGearShift = () => {
@@ -498,7 +511,73 @@ export default function BabylonRacingGame({
           // Step Physics Engine
           const tData = physicsRef.current.update(dt, inputs, track, spline);
 
-          // Update Babylon Vehicle Position & Rotation
+          // Step AI Simulation & Physical Car-to-Car Collision Resolution (before mesh sync)
+          if (sessionMode === "grandprix") {
+            aiSim.update(
+              dt,
+              track,
+              spline,
+              physicsRef.current.position,
+              physicsRef.current.speed,
+              physicsRef.current.currentT,
+              physicsRef.current.signedLateralDistance,
+              physicsRef.current.heading,
+              isRaceActive
+            );
+
+            const coll = collisionSystem.resolveAll(
+              dt,
+              physicsRef.current,
+              aiSim,
+              track,
+              spline,
+              isRaceActive
+            );
+
+            if (coll.hasImpact) {
+              if (barrierSparkSystem) {
+                barrierSparkSystem.triggerCollisionBurst(coll.contactPoint, coll.severity);
+              }
+              engineAudio.playCollisionImpact(coll.severity);
+              inputManager.triggerHaptic(220, coll.severity * 0.75, coll.severity);
+              cameraJoltRef.current = Math.max(cameraJoltRef.current, coll.severity * 0.28);
+              raceCommentary.announceCollision(
+                coll.opponentName,
+                coll.penaltySecondsAdded,
+                coll.warningIssued,
+                coll.playerAtFault
+              );
+
+              collisionAlertIdRef.current += 1;
+              setImpactFlashSeq((s) => s + 1);
+              setCollisionAlert({
+                id: collisionAlertIdRef.current,
+                opponentName: coll.opponentName,
+                opponentNumber: coll.opponentNumber,
+                penaltyAdded: coll.penaltySecondsAdded,
+                totalPenalty: physicsRef.current.penaltySeconds,
+                warnings: physicsRef.current.warnings,
+                warningIssued: coll.warningIssued,
+                playerAtFault: coll.playerAtFault,
+                severity: coll.severity
+              });
+              if (collisionAlertTimerRef.current) {
+                clearTimeout(collisionAlertTimerRef.current);
+              }
+              collisionAlertTimerRef.current = setTimeout(() => {
+                setCollisionAlert(null);
+              }, 3600);
+            }
+
+            // Refresh HUD telemetry with post-collision speed/penalties
+            tData.speedMs = Number.isFinite(physicsRef.current.speed) ? physicsRef.current.speed : 0;
+            tData.speedKmh = Math.round(tData.speedMs * 3.6);
+            tData.penaltySeconds = physicsRef.current.penaltySeconds;
+            tData.warnings = physicsRef.current.warnings;
+            tData.drsLocked = physicsRef.current.drsLockedTimer > 0;
+          }
+
+          // Update Babylon Vehicle Position & Rotation (post-collision separation)
           const p = physicsRef.current.position;
           const px = Number.isFinite(p.x) ? p.x : startPt.x;
           const py = Number.isFinite(p.y) ? p.y : startPt.y;
@@ -541,6 +620,12 @@ export default function BabylonRacingGame({
           // Update Camera Position & Target based on mutable cameraModeRef
           const currentCamMode = cameraModeRef.current;
           const safeSpeedMs = Number.isFinite(tData.speedMs) ? tData.speedMs : 0;
+          if (cameraJoltRef.current > 0) {
+            cameraJoltRef.current = Math.max(0, cameraJoltRef.current - dt * 1.35);
+          }
+          const joltAmt = cameraJoltRef.current;
+          const joltX = joltAmt > 0.002 ? Math.sin(performance.now() * 0.14) * joltAmt : 0;
+          const joltY = joltAmt > 0.002 ? Math.cos(performance.now() * 0.19) * joltAmt * 0.65 : 0;
 
           if (currentCamMode === "chase") {
             // Low, dynamic chase camera (5.2m back, 1.85m high)
@@ -548,8 +633,8 @@ export default function BabylonRacingGame({
             const camHeight = 1.85;
             // High-speed chassis shake / road texture vibration
             const speedShake = safeSpeedMs > 55 ? (Math.sin(performance.now() * 0.05) * 0.015 * ((safeSpeedMs - 55) / 35)) : 0;
-            const camX = px - Math.sin(heading) * camDist;
-            const camY = py + camHeight + speedShake;
+            const camX = px - Math.sin(heading) * camDist + joltX;
+            const camY = py + camHeight + speedShake + joltY;
             const camZ = pz - Math.cos(heading) * camDist;
 
             camDesired.set(camX, camY, camZ);
@@ -566,8 +651,8 @@ export default function BabylonRacingGame({
             const eyeDist = -0.15;
             const eyeHeight = 0.84;
             camDesired.set(
-              px + Math.sin(heading) * eyeDist,
-              py + eyeHeight,
+              px + Math.sin(heading) * eyeDist + joltX * 0.45,
+              py + eyeHeight + joltY * 0.45,
               pz + Math.cos(heading) * eyeDist
             );
             camTarget.set(
@@ -583,8 +668,8 @@ export default function BabylonRacingGame({
             const noseDist = 2.5;
             const noseHeight = 0.42;
             camDesired.set(
-              px + Math.sin(heading) * noseDist,
-              py + noseHeight,
+              px + Math.sin(heading) * noseDist + joltX * 0.4,
+              py + noseHeight + joltY * 0.4,
               pz + Math.cos(heading) * noseDist
             );
             camTarget.set(
@@ -609,6 +694,7 @@ export default function BabylonRacingGame({
           if (prevT > 0.85 && physicsRef.current.currentT < 0.15) {
             setPlayerLap((curr) => {
               if (curr >= totalLaps) {
+                setFinalRaceTime(physicsRef.current.totalRaceTime);
                 setIsFinished(true);
                 isFinishedRef.current = true;
                 engineAudio.stop();
@@ -623,9 +709,8 @@ export default function BabylonRacingGame({
           }
           prevT = physicsRef.current.currentT;
 
-          // AI Simulation & 3D Mesh update
+          // Sync AI 3D Meshes (post-collision separation)
           if (sessionMode === "grandprix") {
-            aiSim.update(dt, track, spline, physicsRef.current.position, isRaceActive);
             for (let i = 0; i < aiSim.cars.length; i++) {
               const aiCar = aiSim.cars[i];
               const aiMesh = aiVehicles[i];
@@ -682,6 +767,9 @@ export default function BabylonRacingGame({
 
     return () => {
       isDisposed = true;
+      if (collisionAlertTimerRef.current) {
+        clearTimeout(collisionAlertTimerRef.current);
+      }
       if (onResize) {
         window.removeEventListener("resize", onResize);
       }
@@ -718,7 +806,7 @@ export default function BabylonRacingGame({
         engineRef.current = null;
       }
     };
-  }, [track, spline, sessionMode, liveryIndex, totalLaps, aiSim, inputManager]);
+  }, [track, spline, sessionMode, liveryIndex, totalLaps, aiSim, collisionSystem, inputManager]);
 
   // Synchronize AI positions periodically for HUD
   useEffect(() => {
@@ -757,6 +845,8 @@ export default function BabylonRacingGame({
         touchControlsActive={showTouchControls}
         isFullscreen={isFullscreen}
         onToggleFullscreen={toggleFullscreen}
+        collisionAlert={collisionAlert}
+        impactFlashSeq={impactFlashSeq}
       />
 
       {/* Mobile & Tablet Touch / Tilt Controls */}
@@ -894,21 +984,36 @@ export default function BabylonRacingGame({
       )}
 
       {/* Victory Modal */}
-      {isFinished && (
-        <div className="modal-backdrop">
-          <div className="victory-modal">
-            <p className="eyebrow">BABYLON.JS RACE CONTROL</p>
-            <h2>CHECKERED FLAG</h2>
-            <div className="victory-pos">
-              FINISH TIME: {Math.floor((Number.isFinite(telemetry.lapTime) ? telemetry.lapTime : 0) / 60)}:
-              {((Number.isFinite(telemetry.lapTime) ? telemetry.lapTime : 0) % 60).toFixed(2).padStart(5, "0")}
+      {isFinished && (() => {
+        const trackSec = Number.isFinite(finalRaceTime) && finalRaceTime > 0 ? finalRaceTime : telemetry.lapTime;
+        const penSec = Number.isFinite(telemetry.penaltySeconds) ? telemetry.penaltySeconds : 0;
+        const totalSec = trackSec + penSec;
+        const fmt = (s: number) => `${Math.floor(s / 60)}:${(s % 60).toFixed(2).padStart(5, "0")}`;
+        return (
+          <div className="modal-backdrop">
+            <div className="victory-modal">
+              <p className="eyebrow">BABYLON.JS RACE CONTROL</p>
+              <h2>CHECKERED FLAG</h2>
+              <div className="victory-pos">
+                FINAL TIME: {fmt(totalSec)}
+              </div>
+              <div className="victory-breakdown">
+                <div className="victory-row">
+                  <span>TRACK TIME</span>
+                  <span>{fmt(trackSec)}</span>
+                </div>
+                <div className={`victory-row ${penSec > 0 ? "has-penalty" : "clean"}`}>
+                  <span>RACE PENALTIES</span>
+                  <span>{penSec > 0 ? `+${penSec.toFixed(1)}s` : "CLEAN (0.0s)"}</span>
+                </div>
+              </div>
+              <button className="primary-btn" onClick={onExitToMenu}>
+                RETURN TO PADDOCK <span>→</span>
+              </button>
             </div>
-            <button className="primary-btn" onClick={onExitToMenu}>
-              RETURN TO PADDOCK <span>→</span>
-            </button>
           </div>
-        </div>
-      )}
+        );
+      })()}
     </div>
   );
 }

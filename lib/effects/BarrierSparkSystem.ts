@@ -11,6 +11,8 @@ import {
 
 export class BarrierSparkSystem {
   private ps: GPUParticleSystem | ParticleSystem;
+  private collisionPs: ParticleSystem;
+  private collisionEmitterPos: Vector3 = new Vector3(0, -100, 0);
 
   constructor(scene: Scene, emitter: AbstractMesh) {
     const sparkTex = new DynamicTexture("sparkTex", { width: 16, height: 16 }, scene);
@@ -55,6 +57,34 @@ export class BarrierSparkSystem {
     this.ps.maxEmitPower = 20.0;
 
     this.ps.start();
+
+    // Dedicated burst emitter for car-to-car contact sparks (zero per-frame allocations)
+    this.collisionPs = new ParticleSystem("collisionSparks", 160, scene);
+    this.collisionPs.particleTexture = sparkTex;
+    this.collisionPs.emitter = this.collisionEmitterPos;
+    this.collisionPs.blendMode = ParticleSystem.BLENDMODE_ONEONE;
+    this.collisionPs.minLifeTime = 0.14;
+    this.collisionPs.maxLifeTime = 0.38;
+    this.collisionPs.minSize = 0.05;
+    this.collisionPs.maxSize = 0.14;
+    this.collisionPs.emitRate = 0;
+    this.collisionPs.minEmitBox = new Vector3(-0.25, -0.1, -0.25);
+    this.collisionPs.maxEmitBox = new Vector3(0.25, 0.2, 0.25);
+    this.collisionPs.direction1 = new Vector3(-1.0, 0.4, -1.0);
+    this.collisionPs.direction2 = new Vector3(1.0, 1.2, 1.0);
+    this.collisionPs.gravity = new Vector3(0, -11.0, 0);
+    this.collisionPs.color1 = new Color4(1.0, 0.96, 0.75, 1.0);
+    this.collisionPs.color2 = new Color4(1.0, 0.42, 0.08, 0.95);
+    this.collisionPs.colorDead = new Color4(0.25, 0.02, 0.0, 0.0);
+    this.collisionPs.minEmitPower = 6.0;
+    this.collisionPs.maxEmitPower = 16.0;
+    this.collisionPs.start();
+  }
+
+  public triggerCollisionBurst(worldPos: Vector3, severity: number): void {
+    const safeSev = Number.isFinite(severity) ? Math.max(0.15, Math.min(1.0, severity)) : 0.5;
+    this.collisionEmitterPos.copyFrom(worldPos);
+    this.collisionPs.manualEmitCount = Math.round(25 + safeSev * 55);
   }
 
   public update(isBarrierContact: boolean, isSkidPlank: boolean, speedMs: number): void {
@@ -76,5 +106,6 @@ export class BarrierSparkSystem {
 
   public dispose(): void {
     this.ps.dispose();
+    this.collisionPs.dispose();
   }
 }

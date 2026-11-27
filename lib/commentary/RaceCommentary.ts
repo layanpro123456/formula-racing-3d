@@ -13,6 +13,8 @@ export type CommentaryCategory =
   | "DRS"
   | "WARNING"
   | "LIMITS"
+  | "COLLISION"
+  | "PENALTY"
   | "FINISH"
   | "COCKPIT";
 
@@ -285,6 +287,8 @@ export class RaceCommentary {
       DRS: 14000,
       WARNING: 7000,
       LIMITS: 6000,
+      COLLISION: 4500,
+      PENALTY: 4500,
       COCKPIT: 10000
     };
 
@@ -327,6 +331,43 @@ export class RaceCommentary {
     this.notify();
 
     this.processQueue(now);
+  }
+
+  /**
+   * Announces a car-to-car collision and any Race Control penalty decision.
+   */
+  public announceCollision(
+    opponentName: string,
+    penaltyAdded: number,
+    warningIssued: boolean,
+    playerAtFault: boolean
+  ): void {
+    const surname = opponentName.split(" ").pop() || opponentName;
+    if (penaltyAdded > 0) {
+      this.say(
+        `Contact with ${surname}! Race Control has handed you a ${penaltyAdded}-second time penalty for causing a collision.`,
+        "PENALTY",
+        4
+      );
+    } else if (warningIssued) {
+      this.say(
+        `Wheel-to-wheel contact with ${surname}! Race Control has issued a driving standards warning.`,
+        "COLLISION",
+        4
+      );
+    } else if (!playerAtFault) {
+      this.say(
+        `Heavy contact with ${surname}. Stewards have noted the incident, no penalty for you.`,
+        "COLLISION",
+        3
+      );
+    } else {
+      this.say(
+        `Tight wheel-to-wheel rubbing with ${surname}! Keep it clean.`,
+        "COLLISION",
+        3
+      );
+    }
   }
 
   /**

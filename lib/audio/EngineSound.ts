@@ -174,6 +174,50 @@ class EngineAudioSystem {
     }
   }
 
+  public playCollisionImpact(severity: number = 0.5) {
+    if (!this.initialized || !this.ctx || this.isMuted) return;
+    try {
+      if (this.ctx.state === "suspended") {
+        this.ctx.resume().catch(() => {});
+      }
+      const now = this.ctx.currentTime;
+      const sev = Number.isFinite(severity) ? Math.max(0.15, Math.min(1.0, severity)) : 0.5;
+
+      // Low-end carbon chassis thud
+      const thudOsc = this.ctx.createOscillator();
+      const thudGain = this.ctx.createGain();
+      thudOsc.type = "triangle";
+      thudOsc.frequency.setValueAtTime(140 + sev * 40, now);
+      thudOsc.frequency.exponentialRampToValueAtTime(38, now + 0.16);
+      thudGain.gain.setValueAtTime(0.18 * sev, now);
+      thudGain.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
+      thudOsc.connect(thudGain);
+      thudGain.connect(this.ctx.destination);
+      thudOsc.start(now);
+      thudOsc.stop(now + 0.19);
+
+      // High-frequency wheel/carbon crunch
+      const crunchOsc = this.ctx.createOscillator();
+      const crunchFilter = this.ctx.createBiquadFilter();
+      const crunchGain = this.ctx.createGain();
+      crunchOsc.type = "sawtooth";
+      crunchOsc.frequency.setValueAtTime(340, now);
+      crunchOsc.frequency.exponentialRampToValueAtTime(95, now + 0.14);
+      crunchFilter.type = "bandpass";
+      crunchFilter.frequency.value = 650;
+      crunchFilter.Q.value = 1.4;
+      crunchGain.gain.setValueAtTime(0.1 * sev, now);
+      crunchGain.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
+      crunchOsc.connect(crunchFilter);
+      crunchFilter.connect(crunchGain);
+      crunchGain.connect(this.ctx.destination);
+      crunchOsc.start(now);
+      crunchOsc.stop(now + 0.16);
+    } catch {
+      // Ignore audio interruption
+    }
+  }
+
   public toggleMute(): boolean {
     this.isMuted = !this.isMuted;
     if (this.gainNode && this.ctx) {

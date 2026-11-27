@@ -1329,6 +1329,12 @@ html, body {
   line-height: 1;
 }
 
+.touch-btn-svg {
+  width: 26px;
+  height: 26px;
+  display: block;
+}
+
 .touch-btn-lbl {
   font-family: 'Barlow Condensed', sans-serif;
   font-size: 11px;

@@ -253,7 +253,9 @@ export function MobileControls({
               onPointerCancel={handleLeftUp}
               onContextMenu={(e) => e.preventDefault()}
             >
-              <span className="touch-btn-glyph">◀</span>
+              <svg className="touch-btn-svg" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M15.5 5.5 9 12l6.5 6.5" fill="none" stroke="currentColor" strokeWidth="2.8" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
               <span className="touch-btn-lbl">LEFT</span>
             </button>
             <button
@@ -265,7 +267,9 @@ export function MobileControls({
               onPointerCancel={handleRightUp}
               onContextMenu={(e) => e.preventDefault()}
             >
-              <span className="touch-btn-glyph">▶</span>
+              <svg className="touch-btn-svg" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M8.5 5.5 15 12l-6.5 6.5" fill="none" stroke="currentColor" strokeWidth="2.8" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
               <span className="touch-btn-lbl">RIGHT</span>
             </button>
           </div>
@@ -335,7 +339,9 @@ export function MobileControls({
             onPointerCancel={handleBrakeUp}
             onContextMenu={(e) => e.preventDefault()}
           >
-            <span className="touch-btn-glyph">■</span>
+            <svg className="touch-btn-svg" viewBox="0 0 24 24" aria-hidden="true">
+              <rect x="6" y="7" width="12" height="10" rx="2" fill="currentColor" />
+            </svg>
             <span className="touch-btn-lbl">BRAKE</span>
           </button>
           <button
@@ -347,7 +353,9 @@ export function MobileControls({
             onPointerCancel={handleGasUp}
             onContextMenu={(e) => e.preventDefault()}
           >
-            <span className="touch-btn-glyph">▲</span>
+            <svg className="touch-btn-svg" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M5.5 15 12 8.5 18.5 15" fill="none" stroke="currentColor" strokeWidth="2.8" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
             <span className="touch-btn-lbl">GAS</span>
           </button>
         </div>

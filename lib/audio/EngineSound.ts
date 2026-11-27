@@ -182,6 +182,15 @@ class EngineAudioSystem {
     return this.isMuted;
   }
 
+  public resume() {
+    if (!this.initialized) {
+      this.init();
+    }
+    if (this.ctx && this.ctx.state === "suspended") {
+      this.ctx.resume().catch(() => {});
+    }
+  }
+
   public stop() {
     if (this.gainNode && this.ctx) {
       this.gainNode.gain.setTargetAtTime(0, this.ctx.currentTime, 0.05);

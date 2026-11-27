@@ -24,6 +24,9 @@ interface RacingHUDProps {
   commentaryState?: CommentaryState;
   isCommentaryMuted?: boolean;
   onToggleCommentary?: () => void;
+  touchControlsActive?: boolean;
+  isFullscreen?: boolean;
+  onToggleFullscreen?: () => void;
 }
 
 export function RacingHUD({
@@ -41,7 +44,10 @@ export function RacingHUD({
   countdown,
   commentaryState,
   isCommentaryMuted,
-  onToggleCommentary
+  onToggleCommentary,
+  touchControlsActive = false,
+  isFullscreen = false,
+  onToggleFullscreen
 }: RacingHUDProps) {
   const [visibleCommentary, setVisibleCommentary] = React.useState<CommentaryState["latestMessage"] | null>(null);
   const latestMsg = commentaryState?.latestMessage;
@@ -108,7 +114,7 @@ export function RacingHUD({
   const numActiveLEDs = Math.floor(rpmRatio * 15);
 
   return (
-    <div className="racing-hud-overlay">
+    <div className={`racing-hud-overlay ${touchControlsActive ? "has-touch-controls" : ""}`}>
       {/* 5-Red-Lights Countdown Sequence Overlay */}
       {countdown !== null && (
         <div className="countdown-backdrop">
@@ -137,17 +143,20 @@ export function RacingHUD({
       <header className="f1-topbar">
         <div className="f1-brand">
           <span className="f1-badge">F1</span>
-          <div>
-            <b>{track.name}</b> · {track.location}
+          <div className="f1-track-label">
+            <b>{track.name}</b> <span className="f1-track-loc">· {track.location}</span>
           </div>
+          <span className="compact-pos-badge">P{playerPos}/{leaderboard.length}</span>
         </div>
         <div className="f1-status-flags">
           {telemetry.isLockup && <span className="flag lockup">TYRE LOCKUP</span>}
-          {telemetry.offTrack && <span className="flag off-track">OFF TRACK WARNING</span>}
-          {telemetry.onKerb && <span className="flag kerb">KERB RUMBLE</span>}
-          {telemetry.drsActive && <span className="flag drs-active">DRS ENABLED</span>}
+          {telemetry.offTrack && <span className="flag off-track">OFF TRACK</span>}
+          {telemetry.onKerb && <span className="flag kerb">KERB</span>}
+          {telemetry.drsActive && <span className="flag drs-active">DRS OPEN</span>}
           {!telemetry.drsActive && telemetry.drsAvailable && (
-            <span className="flag drs-ready">DRS AVAILABLE (PRESS E / SPACE)</span>
+            <span className="flag drs-ready">
+              {touchControlsActive ? "DRS READY" : "DRS AVAILABLE (PRESS E / SPACE)"}
+            </span>
           )}
         </div>
       </header>
@@ -278,24 +287,35 @@ export function RacingHUD({
           </div>
         </div>
 
-        {/* Action Buttons: Camera Switch, Engine Sound, Commentary, Pause */}
+        {/* Action Buttons: Camera Switch, Engine Sound, Commentary, Fullscreen, Pause */}
         <div className="hud-actions">
-          <button className="action-btn" onClick={onToggleCamera} title="Toggle Camera (C)">
+          <button type="button" className="action-btn" onClick={onToggleCamera} title="Toggle Camera (C)">
             CAM: {cameraMode.toUpperCase()}
           </button>
-          <button className="action-btn" onClick={onToggleAudio} title="Mute/Unmute Engine Audio (M)">
-            {isAudioMuted ? "ENGINE: OFF" : "ENGINE: ON"}
+          <button type="button" className="action-btn" onClick={onToggleAudio} title="Mute/Unmute Engine Audio (M)">
+            {isAudioMuted ? "ENG: OFF" : "ENG: ON"}
           </button>
           {onToggleCommentary && (
             <button
+              type="button"
               className={`action-btn ${!isCommentaryMuted ? "comm-active" : ""}`}
               onClick={onToggleCommentary}
               title="Toggle English Race Commentary"
             >
-              {isCommentaryMuted ? "COMM: OFF" : "COMM: ON"}
+              {isCommentaryMuted ? "COM: OFF" : "COM: ON"}
             </button>
           )}
-          <button className="action-btn pause-btn" onClick={onPause}>
+          {onToggleFullscreen && touchControlsActive && (
+            <button
+              type="button"
+              className="action-btn fs-btn"
+              onClick={onToggleFullscreen}
+              title="Toggle Fullscreen Landscape"
+            >
+              {isFullscreen ? "EXIT FS" : "FULL"}
+            </button>
+          )}
+          <button type="button" className="action-btn pause-btn" onClick={onPause}>
             PAUSE
           </button>
         </div>

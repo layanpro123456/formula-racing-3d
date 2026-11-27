@@ -12,20 +12,50 @@ html, body {
   color: #fff;
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   overflow: hidden;
+  overscroll-behavior: none;
   user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
 }
 
-.game-shell, .game {
-  height: 100vh;
+.game-shell {
+  position: fixed;
+  inset: 0;
   width: 100vw;
+  height: 100vh;
+  width: 100dvw;
+  height: 100dvh;
+  overflow: hidden;
+  background: #080b10;
+}
+
+.landscape-stage {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+.game {
+  width: 100%;
+  height: 100%;
   position: relative;
   overflow: hidden;
+  touch-action: none;
+}
+
+.racing-hud-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
 }
 
 .game canvas {
   position: absolute;
   inset: 0;
   outline: none;
+  touch-action: none;
 }
 
 /* ==========================================================================
@@ -73,6 +103,19 @@ html, body {
   color: #fff;
   font-weight: 800;
   letter-spacing: 1.5px;
+}
+
+.compact-pos-badge {
+  display: none;
+  padding: 2px 8px;
+  border-radius: 3px;
+  background: rgba(250, 204, 21, 0.16);
+  border: 1px solid rgba(250, 204, 21, 0.55);
+  color: #facc15;
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 13px;
+  font-weight: 900;
+  letter-spacing: 1px;
 }
 
 .f1-status-flags {
@@ -794,23 +837,75 @@ html, body {
 .f1-menu-panel {
   position: absolute;
   z-index: 30;
-  left: 6vw;
-  top: 14%;
-  width: min(480px, 88vw);
-  padding: 30px 34px;
-  background: linear-gradient(135deg, rgba(11, 15, 23, 0.96) 0%, rgba(15, 23, 42, 0.88) 100%);
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: min(820px, 94%);
+  max-height: 92%;
+  overflow-y: auto;
+  padding: 24px 28px;
+  background: linear-gradient(135deg, rgba(11, 15, 23, 0.96) 0%, rgba(15, 23, 42, 0.9) 100%);
   border-left: 4px solid #e10600;
   backdrop-filter: blur(16px);
-  border-radius: 4px;
+  border-radius: 6px;
   box-shadow: 0 24px 60px rgba(0, 0, 0, 0.7);
+  touch-action: pan-y;
+}
+
+.menu-title-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.menu-title-row .eyebrow {
+  margin: 0;
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 2.5px;
+  color: #94a3b8;
+}
+
+.orientation-chip {
+  flex-shrink: 0;
+  padding: 4px 10px;
+  border-radius: 3px;
+  background: rgba(56, 189, 248, 0.16);
+  border: 1px solid rgba(56, 189, 248, 0.45);
+  color: #38bdf8;
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 1.5px;
+}
+
+.menu-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+}
+
+.menu-col {
+  min-width: 0;
+}
+
+.menu-footer-bar {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 14px;
+  align-items: center;
+  margin-top: 6px;
 }
 
 .f1-menu-panel h1 {
   font-family: 'Barlow Condensed', sans-serif;
-  font-size: clamp(48px, 6vw, 76px);
+  font-size: clamp(32px, 4.4vw, 56px);
   font-weight: 900;
-  line-height: 0.88;
-  margin: 12px 0 18px;
+  line-height: 0.92;
+  margin: 6px 0 0;
   letter-spacing: -1px;
 }
 
@@ -969,8 +1064,11 @@ html, body {
 }
 
 .pause-menu-modal {
-  width: min(440px, 92vw);
+  width: min(460px, 92%);
+  max-height: 90%;
+  overflow-y: auto;
   text-align: center;
+  touch-action: pan-y;
 }
 
 .pause-sensitivity-section {
@@ -978,22 +1076,38 @@ html, body {
   border: 1px solid #1e293b;
   border-radius: 4px;
   padding: 14px 18px;
-  margin: 18px 0 24px;
+  margin: 14px 0 18px;
   text-align: left;
 }
 
-.pause-sensitivity-section .form-header-row label {
+.pause-sensitivity-section .form-header-row label,
+.pause-touch-group label {
+  display: block;
   font-family: 'Barlow Condensed', sans-serif;
   font-size: 11px;
   font-weight: 800;
   letter-spacing: 2px;
   color: #94a3b8;
-  margin: 0;
+  margin: 0 0 6px;
+}
+
+.pause-touch-group {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.modal-btn-row {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  flex-wrap: wrap;
 }
 
 .circuit-info-card {
   display: flex;
   justify-content: space-between;
+  gap: 12px;
   padding: 10px 14px;
   background: rgba(30, 41, 59, 0.5);
   border-radius: 3px;
@@ -1001,7 +1115,7 @@ html, body {
   font-size: 13px;
   letter-spacing: 1px;
   color: #94a3b8;
-  margin: 14px 0 22px;
+  margin: 0;
 }
 
 .circuit-info-card b {
@@ -1010,7 +1124,7 @@ html, body {
 
 .f1-primary-btn {
   width: 100%;
-  padding: 16px 20px;
+  padding: 14px 20px;
   background: #e10600;
   border: none;
   color: #fff;
@@ -1021,6 +1135,7 @@ html, body {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 14px;
   cursor: pointer;
   border-radius: 3px;
   transition: background 0.15s ease, transform 0.1s ease;
@@ -1032,7 +1147,7 @@ html, body {
 }
 
 .controls-legend {
-  margin-top: 16px;
+  margin: 12px 0 0;
   text-align: center;
   font-family: 'Barlow Condensed', sans-serif;
   font-size: 11px;
@@ -1044,13 +1159,14 @@ html, body {
    PAUSE & VICTORY MODALS
    ========================================================================== */
 .modal-backdrop {
-  position: fixed;
+  position: absolute;
   inset: 0;
   z-index: 100;
   background: rgba(4, 6, 10, 0.82);
   display: flex;
   align-items: center;
   justify-content: center;
+  padding: 12px;
   backdrop-filter: blur(8px);
   pointer-events: auto;
 }
@@ -1059,18 +1175,18 @@ html, body {
   background: #111620;
   border: 1px solid #2a3346;
   border-top: 4px solid #e10600;
-  padding: 32px 40px;
+  padding: 24px 30px;
   border-radius: 6px;
   text-align: center;
-  min-width: 320px;
+  min-width: 280px;
   box-shadow: 0 24px 60px rgba(0, 0, 0, 0.85);
 }
 
 .modal h2 {
   font-family: 'Barlow Condensed', sans-serif;
-  font-size: 38px;
+  font-size: 34px;
   font-weight: 900;
-  margin: 8px 0 24px;
+  margin: 6px 0 14px;
   color: #fff;
   letter-spacing: 1px;
 }
@@ -1097,7 +1213,6 @@ html, body {
   letter-spacing: 1px;
   cursor: pointer;
   border-radius: 4px;
-  margin-right: 12px;
   transition: background 0.15s ease;
 }
 
@@ -1126,44 +1241,340 @@ html, body {
 }
 
 .victory-modal {
-  width: min(420px, 92vw);
+  width: min(420px, 92%);
+  max-height: 90%;
+  overflow-y: auto;
   background: #0f172a;
   border-top: 4px solid #facc15;
   border-radius: 6px;
-  padding: 32px 28px;
+  padding: 28px 24px;
   text-align: center;
   box-shadow: 0 24px 60px rgba(0, 0, 0, 0.85);
 }
 
 .victory-modal h2 {
   font-family: 'Barlow Condensed', sans-serif;
-  font-size: 52px;
+  font-size: 44px;
   font-weight: 900;
-  margin: 8px 0 20px;
+  margin: 8px 0 16px;
   color: #facc15;
 }
 
 .victory-pos {
   font-family: 'Barlow Condensed', sans-serif;
-  font-size: 28px;
+  font-size: 24px;
   font-weight: 800;
   color: #fff;
-  margin-bottom: 24px;
+  margin-bottom: 20px;
 }
 
 /* ==========================================================================
-   RESPONSIVE LAYOUT & MEDIA QUERIES
+   MOBILE & TABLET TOUCH CONTROLS OVERLAY
    ========================================================================== */
+.mobile-controls-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 35;
+  pointer-events: none;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  padding:
+    max(12px, env(safe-area-inset-top))
+    max(18px, env(safe-area-inset-right))
+    max(14px, env(safe-area-inset-bottom))
+    max(18px, env(safe-area-inset-left));
+  touch-action: none;
+}
+
+.touch-zone {
+  pointer-events: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  touch-action: none;
+}
+
+.touch-zone-right {
+  align-items: flex-end;
+}
+
+.steer-buttons-cluster {
+  display: flex;
+  gap: 12px;
+  align-items: flex-end;
+}
+
+.touch-btn {
+  border: 1.5px solid rgba(255, 255, 255, 0.2);
+  background: rgba(11, 15, 23, 0.72);
+  color: #f8fafc;
+  backdrop-filter: blur(8px);
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  cursor: pointer;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.45);
+  transition: transform 0.06s ease, background 0.08s ease, border-color 0.08s ease;
+}
+
+.touch-btn-glyph {
+  font-size: 22px;
+  line-height: 1;
+}
+
+.touch-btn-lbl {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 1.5px;
+  color: #cbd5e1;
+}
+
+.steer-btn {
+  width: 82px;
+  height: 82px;
+  border-bottom: 3px solid rgba(255, 255, 255, 0.25);
+}
+
+.steer-btn.active {
+  background: rgba(225, 6, 0, 0.55);
+  border-color: #ef4444;
+  transform: scale(0.95);
+  box-shadow: 0 0 20px rgba(225, 6, 0, 0.55);
+}
+
+.pedals-cluster {
+  display: flex;
+  gap: 12px;
+  align-items: flex-end;
+}
+
+.pedal-btn.brake-pedal {
+  width: 74px;
+  height: 84px;
+  border-bottom: 3px solid #ef4444;
+}
+
+.pedal-btn.brake-pedal.active {
+  background: rgba(220, 38, 38, 0.65);
+  border-color: #f87171;
+  transform: scale(0.95);
+  box-shadow: 0 0 22px rgba(239, 68, 68, 0.6);
+}
+
+.pedal-btn.gas-pedal {
+  width: 86px;
+  height: 104px;
+  border-bottom: 3px solid #22c55e;
+}
+
+.pedal-btn.gas-pedal.active {
+  background: rgba(22, 163, 74, 0.62);
+  border-color: #4ade80;
+  transform: scale(0.95);
+  box-shadow: 0 0 24px rgba(34, 197, 94, 0.6);
+}
+
+.drs-touch-btn {
+  width: 112px;
+  height: 36px;
+  border-radius: 6px;
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 14px;
+  font-weight: 900;
+  letter-spacing: 2px;
+  color: #94a3b8;
+  border-color: rgba(148, 163, 184, 0.28);
+}
+
+.drs-touch-btn.available {
+  border-color: #10b981;
+  color: #6ee7b7;
+  background: rgba(16, 185, 129, 0.22);
+  box-shadow: 0 0 16px rgba(16, 185, 129, 0.4);
+}
+
+.drs-touch-btn.active {
+  background: #10b981;
+  border-color: #34d399;
+  color: #03150e;
+  box-shadow: 0 0 22px rgba(16, 185, 129, 0.85);
+}
+
+/* Analog Touch Steer Slider */
+.steer-slider-track {
+  position: relative;
+  width: 170px;
+  height: 66px;
+  border-radius: 33px;
+  background: rgba(11, 15, 23, 0.78);
+  border: 1.5px solid rgba(255, 255, 255, 0.22);
+  backdrop-filter: blur(8px);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.45);
+  touch-action: none;
+}
+
+.steer-slider-track.active {
+  border-color: #e10600;
+  box-shadow: 0 0 20px rgba(225, 6, 0, 0.45);
+}
+
+.steer-slider-center-mark {
+  position: absolute;
+  left: 50%;
+  top: 12px;
+  bottom: 12px;
+  width: 2px;
+  background: rgba(255, 255, 255, 0.22);
+  transform: translateX(-50%);
+}
+
+.steer-slider-hint {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.35);
+  pointer-events: none;
+}
+
+.steer-slider-hint.left {
+  left: 14px;
+}
+
+.steer-slider-hint.right {
+  right: 14px;
+}
+
+.steer-slider-thumb {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  background: radial-gradient(circle at 35% 35%, #ff3b30, #b91c1c);
+  border: 2px solid #ffffff;
+  box-shadow: 0 0 14px rgba(225, 6, 0, 0.75);
+  pointer-events: none;
+}
+
+/* Tilt / Gyro Steer Meter */
+.tilt-steer-panel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.tilt-meter-track {
+  position: relative;
+  width: 140px;
+  height: 20px;
+  border-radius: 10px;
+  background: rgba(11, 15, 23, 0.8);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.tilt-meter-center {
+  position: absolute;
+  left: 50%;
+  top: 3px;
+  bottom: 3px;
+  width: 2px;
+  background: rgba(255, 255, 255, 0.35);
+  transform: translateX(-50%);
+}
+
+.tilt-meter-needle {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #38bdf8;
+  box-shadow: 0 0 10px #38bdf8;
+  transform: translate(0, -50%);
+}
+
+.tilt-recenter-btn {
+  background: rgba(15, 23, 42, 0.85);
+  border: 1px solid rgba(56, 189, 248, 0.55);
+  color: #38bdf8;
+  padding: 6px 12px;
+  border-radius: 5px;
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 1.2px;
+  cursor: pointer;
+  touch-action: none;
+}
+
+/* ==========================================================================
+   RESPONSIVE LAYOUT & MOBILE LANDSCAPE ADAPTATIONS
+   ========================================================================== */
+.racing-hud-overlay.has-touch-controls .tachometer-center {
+  bottom: 14px;
+  padding: 6px 14px;
+  gap: 3px;
+}
+
+.racing-hud-overlay.has-touch-controls .shift-lights {
+  gap: 3px;
+  margin-bottom: 2px;
+}
+
+.racing-hud-overlay.has-touch-controls .led {
+  width: 10px;
+  height: 6px;
+}
+
+.racing-hud-overlay.has-touch-controls .speed-gear-cluster {
+  gap: 14px;
+}
+
+.racing-hud-overlay.has-touch-controls .gear-display .value {
+  font-size: 32px;
+}
+
+.racing-hud-overlay.has-touch-controls .speed-display {
+  min-width: 74px;
+}
+
+.racing-hud-overlay.has-touch-controls .speed-display .value {
+  font-size: 38px;
+}
+
+.racing-hud-overlay.has-touch-controls .commentary-banner {
+  bottom: auto;
+  top: 48px;
+  left: 14px;
+  right: auto;
+  transform: none;
+  width: min(300px, 40%);
+  padding: 6px 10px;
+}
+
 @media (max-width: 1280px) {
   .timing-tower {
-    width: 200px;
+    width: 195px;
     left: 16px;
-    top: 68px;
+    top: 64px;
   }
   .telemetry-right {
-    width: 200px;
+    width: 205px;
     right: 16px;
-    top: 68px;
+    top: 64px;
   }
   .card-row .val {
     font-size: 18px;
@@ -1171,51 +1582,247 @@ html, body {
   .card-row .val.mono {
     font-size: 15px;
   }
-  .commentary-banner {
-    left: 16px;
-    bottom: 100px;
-    max-width: 380px;
-  }
 }
 
-@media (max-width: 900px) {
+@media (max-width: 1024px), (max-height: 580px) {
+  .f1-topbar {
+    height: 44px;
+    padding: 0 14px;
+  }
+  .f1-brand {
+    font-size: 15px;
+    gap: 8px;
+  }
+  .f1-badge {
+    width: 28px;
+    height: 22px;
+    font-size: 14px;
+  }
+  .f1-track-loc {
+    display: none;
+  }
+  .compact-pos-badge {
+    display: inline-block;
+  }
   .timing-tower {
     display: none;
   }
-  .f1-topbar {
-    padding: 0 16px;
-  }
   .telemetry-right {
-    top: 68px;
+    top: 48px;
     right: 12px;
-    width: 175px;
+    width: auto;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 6px;
   }
-  .tachometer-center {
-    bottom: 16px;
-    padding: 8px 14px;
-    gap: 4px;
+  .track-minimap-card {
+    display: none;
   }
-  .speed-display .value {
-    font-size: 48px;
+  .hud-card {
+    padding: 6px 10px;
+    flex-direction: row;
+    align-items: center;
+    gap: 12px;
   }
-  .gear-display .value {
-    font-size: 40px;
+  .card-row {
+    gap: 6px;
   }
-  .commentary-banner {
-    left: 12px;
-    bottom: 80px;
-    max-width: 320px;
+  .card-row .val {
+    font-size: 15px;
+  }
+  .card-row .val.mono {
+    font-size: 13px;
+  }
+  .card-row.g-forces,
+  .hud-card .card-row:nth-child(3),
+  .hud-card .card-row:nth-child(4) {
+    display: none;
+  }
+  .hud-actions {
+    flex-direction: row;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 6px;
+  }
+  .action-btn {
+    padding: 7px 10px;
+    font-size: 12px;
+    min-height: 36px;
+  }
+  .gantry-lights-box {
+    padding: 16px 24px;
+    gap: 10px;
+  }
+  .gantry-light {
+    width: 28px;
+    height: 28px;
+  }
+  .countdown-text {
+    font-size: 20px;
   }
 }
 
-@media (max-width: 640px) {
-  .telemetry-right {
-    display: none;
+/* Also apply compact landscape HUD/menu styles when CSS-rotated from portrait */
+.landscape-stage.is-rotated .f1-topbar {
+  height: 44px;
+  padding: 0 14px;
+}
+.landscape-stage.is-rotated .f1-brand {
+  font-size: 15px;
+  gap: 8px;
+}
+.landscape-stage.is-rotated .f1-badge {
+  width: 28px;
+  height: 22px;
+  font-size: 14px;
+}
+.landscape-stage.is-rotated .f1-track-loc {
+  display: none;
+}
+.landscape-stage.is-rotated .compact-pos-badge {
+  display: inline-block;
+}
+.landscape-stage.is-rotated .timing-tower {
+  display: none;
+}
+.landscape-stage.is-rotated .telemetry-right {
+  top: 48px;
+  right: 12px;
+  width: auto;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+}
+.landscape-stage.is-rotated .track-minimap-card {
+  display: none;
+}
+.landscape-stage.is-rotated .hud-card {
+  padding: 6px 10px;
+  flex-direction: row;
+  align-items: center;
+  gap: 12px;
+}
+.landscape-stage.is-rotated .card-row {
+  gap: 6px;
+}
+.landscape-stage.is-rotated .card-row .val {
+  font-size: 15px;
+}
+.landscape-stage.is-rotated .card-row .val.mono {
+  font-size: 13px;
+}
+.landscape-stage.is-rotated .card-row.g-forces,
+.landscape-stage.is-rotated .hud-card .card-row:nth-child(3),
+.landscape-stage.is-rotated .hud-card .card-row:nth-child(4) {
+  display: none;
+}
+.landscape-stage.is-rotated .hud-actions {
+  flex-direction: row;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+.landscape-stage.is-rotated .action-btn {
+  padding: 7px 10px;
+  font-size: 12px;
+  min-height: 36px;
+}
+
+/* Compact menu on short landscape phones and rotated portrait screens */
+@media (max-height: 540px), (max-width: 760px) {
+  .f1-menu-panel {
+    width: min(760px, 95%);
+    max-height: 94%;
+    padding: 14px 18px;
   }
-  .commentary-banner {
-    left: 8px;
-    right: 8px;
-    bottom: 90px;
-    width: auto;
+  .f1-menu-panel h1 {
+    font-size: 28px;
+  }
+  .menu-grid {
+    gap: 12px;
+  }
+  .form-group {
+    margin-bottom: 10px;
+  }
+  .f1-select {
+    padding: 8px 10px;
+    font-size: 14px;
+  }
+  .pill-btn {
+    padding: 7px 6px;
+    font-size: 12px;
+  }
+  .menu-footer-bar {
+    grid-template-columns: 1fr auto;
+    gap: 10px;
+  }
+  .f1-primary-btn {
+    padding: 10px 16px;
+    font-size: 16px;
+  }
+  .controls-legend {
+    margin-top: 8px;
+    font-size: 10px;
+  }
+  .steer-btn {
+    width: 72px;
+    height: 72px;
+  }
+  .pedal-btn.brake-pedal {
+    width: 68px;
+    height: 76px;
+  }
+  .pedal-btn.gas-pedal {
+    width: 76px;
+    height: 92px;
+  }
+}
+
+.landscape-stage.is-rotated .f1-menu-panel {
+  width: min(760px, 95%);
+  max-height: 94%;
+  padding: 14px 18px;
+}
+.landscape-stage.is-rotated .f1-menu-panel h1 {
+  font-size: 28px;
+}
+.landscape-stage.is-rotated .menu-grid {
+  gap: 12px;
+}
+.landscape-stage.is-rotated .form-group {
+  margin-bottom: 10px;
+}
+.landscape-stage.is-rotated .f1-select {
+  padding: 8px 10px;
+  font-size: 14px;
+}
+.landscape-stage.is-rotated .pill-btn {
+  padding: 7px 6px;
+  font-size: 12px;
+}
+.landscape-stage.is-rotated .f1-primary-btn {
+  padding: 10px 16px;
+  font-size: 16px;
+}
+.landscape-stage.is-rotated .steer-btn {
+  width: 72px;
+  height: 72px;
+}
+.landscape-stage.is-rotated .pedal-btn.brake-pedal {
+  width: 68px;
+  height: 76px;
+}
+.landscape-stage.is-rotated .pedal-btn.gas-pedal {
+  width: 76px;
+  height: 92px;
+}
+
+@media (max-width: 560px) {
+  .landscape-stage:not(.is-rotated) .menu-grid {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+  .landscape-stage:not(.is-rotated) .menu-footer-bar {
+    grid-template-columns: 1fr;
   }
 }

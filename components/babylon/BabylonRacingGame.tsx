@@ -27,10 +27,13 @@ import { VehiclePhysics, TelemetryData } from "@/lib/physics/VehiclePhysics";
 import { AISimulator, AICarState } from "@/lib/ai/AIDriver";
 import { engineAudio } from "@/lib/audio/EngineSound";
 import { RacingHUD } from "@/components/RacingHUD";
-import { InputManager } from "@/lib/input/InputManager";
+import { InputManager, TouchSteerScheme } from "@/lib/input/InputManager";
 import { TireSmokeSystem } from "@/lib/effects/TireSmokeSystem";
 import { BarrierSparkSystem } from "@/lib/effects/BarrierSparkSystem";
 import { raceCommentary, CommentaryState } from "@/lib/commentary/RaceCommentary";
+import { MobileControls } from "@/components/MobileControls";
+import { useLandscapeStage } from "@/components/LandscapeStage";
+import type { TouchControlMode } from "@/components/RacingGame";
 
 type CameraMode = "chase" | "cockpit" | "nose";
 
@@ -39,6 +42,10 @@ interface BabylonRacingGameProps {
   sessionMode: "grandprix" | "practice" | "qualifying";
   liveryIndex: number;
   initialSteeringSensitivity?: number;
+  touchControlMode?: TouchControlMode;
+  steerScheme?: TouchSteerScheme;
+  onTouchControlModeChange?: (mode: TouchControlMode) => void;
+  onSteerSchemeChange?: (scheme: TouchSteerScheme) => void;
   onExitToMenu: () => void;
 }
 
@@ -71,9 +78,15 @@ export default function BabylonRacingGame({
   sessionMode,
   liveryIndex,
   initialSteeringSensitivity = 1.0,
+  touchControlMode = "auto",
+  steerScheme = "buttons",
+  onTouchControlModeChange,
+  onSteerSchemeChange,
   onExitToMenu
 }: BabylonRacingGameProps) {
+  const { isTouchDevice, isRotatedPortrait, isFullscreen, toggleFullscreen } = useLandscapeStage();
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const engineRef = useRef<Engine | null>(null);
   const [telemetry, setTelemetry] = useState<TelemetryData>(defaultTelemetry);
   const [playerLap, setPlayerLap] = useState(1);
   const [totalLaps, setTotalLaps] = useState(sessionMode === "qualifying" ? 1 : track.lapsDefault);
@@ -85,6 +98,8 @@ export default function BabylonRacingGame({
   const countdownRef = useRef<number | null>(sessionMode === "grandprix" ? 3 : null);
   const [isPaused, setIsPaused] = useState(false);
   const [isFinished, setIsFinished] = useState(false);
+  const showTouchControls =
+    touchControlMode === "on" || (touchControlMode === "auto" && isTouchDevice);
   const [steeringSensitivity, setSteeringSensitivity] = useState<number>(() => {
     if (typeof window !== "undefined") {
       try {
@@ -159,14 +174,28 @@ export default function BabylonRacingGame({
     } catch {}
   }, [inputManager]);
 
-  // Synchronize steering sensitivity to active input & physics subsystems
+  // Synchronize steering sensitivity and touch control scheme to active subsystems
   useEffect(() => {
     steeringSensitivityRef.current = steeringSensitivity;
     inputManager.steeringSensitivity = steeringSensitivity;
+    inputManager.controlScheme = steerScheme;
+    if (steerScheme === "tilt") {
+      void inputManager.requestGyroPermission();
+    }
     if (physicsRef.current) {
       physicsRef.current.steeringSensitivity = steeringSensitivity;
     }
-  }, [inputManager, steeringSensitivity]);
+  }, [inputManager, steeringSensitivity, steerScheme]);
+
+  // Resize Babylon WebGL canvas cleanly when CSS auto-rotation changes
+  useEffect(() => {
+    if (engineRef.current) {
+      const raf = window.requestAnimationFrame(() => {
+        engineRef.current?.resize();
+      });
+      return () => window.cancelAnimationFrame(raf);
+    }
+  }, [isRotatedPortrait]);
 
   // Connect Commentary listener
   useEffect(() => {
@@ -244,11 +273,18 @@ export default function BabylonRacingGame({
       if (!canvasRef.current || isDisposed) return;
 
       // 1. Initialize Babylon.js Engine with optimized settings (no unnecessary buffer preservation)
+      const isMobileTier =
+        typeof window !== "undefined" &&
+        ((window.matchMedia?.("(pointer: coarse)")?.matches ?? false) ||
+          (typeof navigator !== "undefined" && navigator.maxTouchPoints > 0) ||
+          Math.min(window.innerWidth, window.innerHeight) <= 900);
+
       engine = new Engine(canvasRef.current, true, {
         preserveDrawingBuffer: false,
         stencil: false,
         powerPreference: "high-performance"
       });
+      engineRef.current = engine;
       scene = new Scene(engine);
       scene.clearColor = Color4.FromHexString(`${track.skyColor}FF`);
 
@@ -283,19 +319,24 @@ export default function BabylonRacingGame({
       sun.position = new Vector3(80, 120, 50);
       sun.intensity = 2.2;
 
-      // Cascaded Shadow Map for contact-hardened vehicle & barrier shadows
-      try {
-        const csm = new CascadedShadowGenerator(2048, sun);
-        csm.numCascades = 3;
-        csm.stabilizeCascades = true;
-        csm.useContactHardeningShadow = true;
-        csm.contactHardeningLightSizeUVRatio = 0.05;
-        csm.bias = 0.001;
-        csm.normalBias = 0.005;
-        shadowGen = csm;
-      } catch {
+      // Cascaded Shadow Map on desktop; lightweight single ShadowGenerator on mobile/tablet GPUs
+      if (isMobileTier) {
         shadowGen = new ShadowGenerator(1024, sun);
         shadowGen.usePoissonSampling = true;
+      } else {
+        try {
+          const csm = new CascadedShadowGenerator(2048, sun);
+          csm.numCascades = 3;
+          csm.stabilizeCascades = true;
+          csm.useContactHardeningShadow = true;
+          csm.contactHardeningLightSizeUVRatio = 0.05;
+          csm.bias = 0.001;
+          csm.normalBias = 0.005;
+          shadowGen = csm;
+        } catch {
+          shadowGen = new ShadowGenerator(1024, sun);
+          shadowGen.usePoissonSampling = true;
+        }
       }
 
       // Atmospheric Fog
@@ -331,30 +372,30 @@ export default function BabylonRacingGame({
         glowLayer.addIncludedOnlyMesh(disc);
       }
 
-      // Default Rendering Pipeline (FXAA + Bloom + ACES Tonemapping + Chromatic Aberration + Sharpening)
+      // Default Rendering Pipeline (scaled for mobile vs desktop GPU tiers)
       pipeline = new DefaultRenderingPipeline("defaultPipeline", true, scene, [camera]);
       pipeline.fxaaEnabled = true;
-      pipeline.samples = 4;
+      pipeline.samples = isMobileTier ? 1 : 4;
       pipeline.bloomEnabled = true;
-      pipeline.bloomWeight = 0.35;
+      pipeline.bloomWeight = isMobileTier ? 0.25 : 0.35;
       pipeline.bloomThreshold = 0.72;
-      pipeline.bloomKernel = 64;
+      pipeline.bloomKernel = isMobileTier ? 32 : 64;
       pipeline.bloomScale = 0.5;
 
-      pipeline.sharpenEnabled = true;
-      if (pipeline.sharpen) {
+      pipeline.sharpenEnabled = !isMobileTier;
+      if (!isMobileTier && pipeline.sharpen) {
         pipeline.sharpen.edgeAmount = 0.22;
         pipeline.sharpen.colorAmount = 1.0;
       }
 
-      pipeline.chromaticAberrationEnabled = true;
-      if (pipeline.chromaticAberration) {
+      pipeline.chromaticAberrationEnabled = !isMobileTier;
+      if (!isMobileTier && pipeline.chromaticAberration) {
         pipeline.chromaticAberration.aberrationAmount = 2.4;
         pipeline.chromaticAberration.radialIntensity = 0.75;
       }
 
-      pipeline.grainEnabled = true;
-      if (pipeline.grain) {
+      pipeline.grainEnabled = !isMobileTier;
+      if (!isMobileTier && pipeline.grain) {
         pipeline.grain.intensity = 5.0;
         pipeline.grain.animated = false;
       }
@@ -367,24 +408,26 @@ export default function BabylonRacingGame({
       pipeline.imageProcessing.vignetteEnabled = true;
       pipeline.imageProcessing.vignetteWeight = 1.15;
 
-      // Screen-Space Ambient Occlusion (SSAO2) for ground contact depth
-      try {
-        ssaoPipeline = new SSAO2RenderingPipeline("ssao2", scene, { ssaoRatio: 0.5, blurRatio: 0.5 }, [camera]);
-        ssaoPipeline.radius = 2.2;
-        ssaoPipeline.totalStrength = 1.15;
-        ssaoPipeline.base = 0.12;
-        ssaoPipeline.maxZ = 120;
-      } catch (e) {
-        console.warn("SSAO2 fallback:", e);
-      }
+      // Screen-Space Ambient Occlusion (SSAO2) for desktop GPUs
+      if (!isMobileTier) {
+        try {
+          ssaoPipeline = new SSAO2RenderingPipeline("ssao2", scene, { ssaoRatio: 0.5, blurRatio: 0.5 }, [camera]);
+          ssaoPipeline.radius = 2.2;
+          ssaoPipeline.totalStrength = 1.15;
+          ssaoPipeline.base = 0.12;
+          ssaoPipeline.maxZ = 120;
+        } catch (e) {
+          console.warn("SSAO2 fallback:", e);
+        }
 
-      // Velocity-dependent Motion Blur
-      try {
-        motionBlur = new MotionBlurPostProcess("motionBlur", scene, 1.0, camera);
-        motionBlur.motionStrength = 0;
-        motionBlur.isObjectBased = false;
-      } catch (e) {
-        console.warn("MotionBlur fallback:", e);
+        // Velocity-dependent Motion Blur
+        try {
+          motionBlur = new MotionBlurPostProcess("motionBlur", scene, 1.0, camera);
+          motionBlur.motionStrength = 0;
+          motionBlur.isObjectBased = false;
+        } catch (e) {
+          console.warn("MotionBlur fallback:", e);
+        }
       }
 
       // Particle Systems (Tire Smoke & Barrier Sparks)
@@ -672,6 +715,7 @@ export default function BabylonRacingGame({
       }
       if (engine) {
         engine.dispose();
+        engineRef.current = null;
       }
     };
   }, [track, spline, sessionMode, liveryIndex, totalLaps, aiSim, inputManager]);
@@ -686,11 +730,11 @@ export default function BabylonRacingGame({
   }, [aiSim, sessionMode]);
 
   return (
-    <div className="game" style={{ width: "100vw", height: "100vh", position: "relative" }}>
+    <div className="game">
       {/* Babylon.js WebGL Canvas */}
       <canvas
         ref={canvasRef}
-        style={{ width: "100%", height: "100%", position: "absolute", inset: 0, outline: "none" }}
+        style={{ width: "100%", height: "100%", position: "absolute", inset: 0, outline: "none", touchAction: "none" }}
       />
 
       {/* Broadcast F1 Telemetry HUD */}
@@ -710,7 +754,22 @@ export default function BabylonRacingGame({
         commentaryState={commentaryState}
         isCommentaryMuted={isCommentaryMuted}
         onToggleCommentary={handleToggleCommentary}
+        touchControlsActive={showTouchControls}
+        isFullscreen={isFullscreen}
+        onToggleFullscreen={toggleFullscreen}
       />
+
+      {/* Mobile & Tablet Touch / Tilt Controls */}
+      {showTouchControls && (
+        <MobileControls
+          inputManager={inputManager}
+          steerScheme={steerScheme}
+          isRotatedPortrait={isRotatedPortrait}
+          drsAvailable={telemetry.drsAvailable}
+          drsActive={telemetry.drsActive}
+          disabled={isPaused || isFinished}
+        />
+      )}
 
       {/* Paused Modal */}
       {isPaused && (
@@ -745,31 +804,91 @@ export default function BabylonRacingGame({
                   className={`pill-btn ${Math.abs(steeringSensitivity - 0.7) < 0.04 ? "active" : ""}`}
                   onClick={() => handleSensitivityChange(0.7)}
                 >
-                  SMOOTH (70%)
+                  SMOOTH
                 </button>
                 <button
                   type="button"
                   className={`pill-btn ${Math.abs(steeringSensitivity - 1.0) < 0.04 ? "active" : ""}`}
                   onClick={() => handleSensitivityChange(1.0)}
                 >
-                  STANDARD (100%)
+                  STANDARD
                 </button>
                 <button
                   type="button"
                   className={`pill-btn ${Math.abs(steeringSensitivity - 1.3) < 0.04 ? "active" : ""}`}
                   onClick={() => handleSensitivityChange(1.3)}
                 >
-                  SHARP (130%)
+                  SHARP
                 </button>
               </div>
+
+              {onTouchControlModeChange && (
+                <div className="pause-touch-group">
+                  <label>TOUCH CONTROLS</label>
+                  <div className="pills-group">
+                    <button
+                      type="button"
+                      className={`pill-btn ${touchControlMode === "auto" ? "active" : ""}`}
+                      onClick={() => onTouchControlModeChange("auto")}
+                    >
+                      AUTO
+                    </button>
+                    <button
+                      type="button"
+                      className={`pill-btn ${touchControlMode === "on" ? "active" : ""}`}
+                      onClick={() => onTouchControlModeChange("on")}
+                    >
+                      ON
+                    </button>
+                    <button
+                      type="button"
+                      className={`pill-btn ${touchControlMode === "off" ? "active" : ""}`}
+                      onClick={() => onTouchControlModeChange("off")}
+                    >
+                      OFF
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {onSteerSchemeChange && showTouchControls && (
+                <div className="pause-touch-group">
+                  <label>STEER MODE</label>
+                  <div className="pills-group">
+                    <button
+                      type="button"
+                      className={`pill-btn ${steerScheme === "buttons" ? "active" : ""}`}
+                      onClick={() => onSteerSchemeChange("buttons")}
+                    >
+                      BUTTONS
+                    </button>
+                    <button
+                      type="button"
+                      className={`pill-btn ${steerScheme === "slider" ? "active" : ""}`}
+                      onClick={() => onSteerSchemeChange("slider")}
+                    >
+                      SLIDER
+                    </button>
+                    <button
+                      type="button"
+                      className={`pill-btn ${steerScheme === "tilt" ? "active" : ""}`}
+                      onClick={() => onSteerSchemeChange("tilt")}
+                    >
+                      TILT
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
 
-            <button className="primary-btn" onClick={handleTogglePause}>
-              RESUME <span>→</span>
-            </button>
-            <button className="secondary-btn" onClick={onExitToMenu}>
-              EXIT TO PADDOCK
-            </button>
+            <div className="modal-btn-row">
+              <button type="button" className="primary-btn" onClick={handleTogglePause}>
+                RESUME <span>→</span>
+              </button>
+              <button type="button" className="secondary-btn" onClick={onExitToMenu}>
+                EXIT TO PADDOCK
+              </button>
+            </div>
           </div>
         </div>
       )}

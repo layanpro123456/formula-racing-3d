@@ -42,7 +42,7 @@ Experience the full 3D simulation running live at 60/120 FPS directly in your br
 ## 📸 Visual Showcase
 
 ### Gameplay Demo Video
-*In-engine 3D gameplay footage capturing live telemetry, dynamic chase camera action, and real-time circuit racing.*
+*In-engine 3D gameplay footage capturing the Paddock setup, 5-red-light Grand Prix start, wheel-to-wheel AI racing, physical car-to-car collisions with sparks and Race Control penalties, multi-camera views, and mobile auto-landscape touch controls.*
 
 - **Edited Gameplay Demo (MP4)**: [public/videos/formula_racing_3d_demo.mp4](public/videos/formula_racing_3d_demo.mp4)
 - **Raw Gameplay Capture (WebM)**: [public/videos/raw_gameplay.webm](public/videos/raw_gameplay.webm)
@@ -167,10 +167,21 @@ Six accurately modeled championship circuits with true 3D elevation gradients an
 
 ---
 
-### 🤖 Autonomous Multi-Car AI Grid
+### 🤖 Autonomous Multi-Car AI Grid & Physical Car-to-Car Collisions
 - **Intelligent Grid Racing**: Race against 5 autonomous AI drivers, each representing distinct constructor teams and driver profiles.
-- **Curvature Speed Profiling**: AI drivers evaluate upcoming track radius vectors in real-time to compute optimal braking thresholds, corner apex speeds, and exit acceleration profiles.
-- **Local Spatial Avoidance**: Multi-car collision avoidance prevents artificial procession trains and reckless side-by-side collisions.
+- **Curvature Speed Profiling & Proactive Avoidance**: AI drivers evaluate upcoming track curvature in real time and apply wrap-around longitudinal TTC braking down to a standstill when blocked, plus dynamic left/right overtaking lane selection and side-by-side racing etiquette.
+- **2D OBB SAT Car-to-Car Physics**: Player–AI and AI–AI overlaps are resolved every frame via a zero-allocation Oriented Bounding Box Separating Axis Theorem solver with elevation gating for crossover bridges, elastic-plastic momentum transfer, and barrier re-clamping.
+- **FIA-Style Race Control & Incident Feedback**: Contact triggers 3D titanium sparks, camera jolt, synthesized impact audio, gamepad haptics, screen-edge red impact pulses, temporary DRS lockouts, Race Control incident banners, and time penalties reflected across the HUD, timing tower, and final race classification.
+
+---
+
+### 📱 Mobile Auto-Landscape & Multi-Touch / Tilt Controls
+- **Automatic 90° Landscape Stage**: Portrait phones and tablets automatically rotate `90°` into a full horizontal racing stage (`LandscapeStage`) with synchronized Babylon.js canvas resizing and rotated pointer mapping—even on iOS Safari or OS portrait-locked devices.
+- **Three Switchable Touch Schemes**:
+  - **Touch Pads (`BUTTONS`)**: Multi-touch Left/Right steering buttons with SVG directional icons alongside Brake, Gas, and smart-latching DRS controls.
+  - **Analog Slider (`SLIDER`)**: Continuous horizontal touch steering slider with live thumb feedback.
+  - **Gyroscope Tilt (`TILT`)**: `DeviceOrientationEvent` tilt steering with live needle indicator and one-tap recentering.
+- **Adaptive Mobile GPU Tier**: Touch devices and compact viewports (`<= 900px` short edge) automatically scale down to `1024px` single shadow maps and `1x` pipeline sampling (disabling SSAO2, 3-tier CSM, and motion blur) to maintain smooth framerates.
 
 ---
 
@@ -223,9 +234,26 @@ Six accurately modeled championship circuits with true 3D elevation gradients an
 
 ---
 
+## 💻 Minimum & Recommended Device Requirements
+
+### Supported Browsers & Web APIs
+- **Required**: Modern browser with **WebGL 2.0** and **WebAssembly (WASM)** enabled (`Chrome 90+`, `Edge 90+`, `Firefox 90+`, `Brave`, `Safari / iOS Safari 16.4+`).
+- **Enhanced Capabilities**: Web Audio API (procedural engine & collision audio), Web Speech API (race engineer voice commentary), Gamepad API with Dual-Rumble Vibration Actuator, and `DeviceOrientationEvent` (optional mobile tilt steering).
+
+### Minimum & Recommended Hardware
+
+| Platform | Minimum Requirements | Recommended (60–120 FPS) |
+| :--- | :--- | :--- |
+| **Desktop / Laptop** | Windows 10+, macOS 13+, or 64-bit Linux · Dual-core 2.0 GHz CPU · 4 GB RAM · WebGL 2.0 GPU (512 MB+ VRAM, D3D11/Metal/OpenGL ES 3.0) · 1280×720 viewport | Quad-core CPU or Apple Silicon · 8 GB+ RAM · Dedicated or modern integrated GPU (Intel UHD 730 / Iris Xe / M-series / GTX 1050+) · 1920×1080 display · Gamepad or keyboard |
+| **Mobile & Tablet** | iOS / iPadOS 16.4+ or Android 10+ · 64-bit ARM SoC · 3 GB RAM · Touch screen with WebGL 2.0 enabled | iOS 17+ / Android 12+ · Mid-range or flagship SoC (Apple A14+ / Snapdragon 7xx/8xx+) · 4 GB+ RAM · Landscape or Auto-Landscape touch mode |
+
+> **Adaptive Graphics Tier**: Devices with coarse touch pointers or a short viewport edge `<= 900px` automatically switch to lightweight `1024px` shadow maps and single-sample post-processing (disabling SSAO2, 3-tier cascaded shadows, and velocity motion blur) to sustain playable framerates on mobile GPUs.
+
+---
+
 ## 🚀 Getting Started
 
-### Prerequisites
+### Local Development Prerequisites
 - [Node.js](https://nodejs.org) 20.0 or higher
 - [npm](https://www.npmjs.com) 9.0 or higher
 - Modern web browser with WebGL 2.0 support (Chrome, Edge, Firefox, Brave, Safari 16.4+)
@@ -273,8 +301,10 @@ formula-racing-3d/
 │   ├── layout.tsx               # Root layout, viewport metadata, and fonts
 │   └── page.tsx                 # Main application entry point
 ├── components/
+│   ├── LandscapeStage.tsx       # Auto-rotating 90° landscape stage for portrait mobile
+│   ├── MobileControls.tsx       # Multi-touch pads, analog slider, tilt & DRS controls
 │   ├── RacingGame.tsx           # Paddock garage menu shell & session configurator
-│   ├── RacingHUD.tsx            # Shift lights, timing tower, and telemetry HUD
+│   ├── RacingHUD.tsx            # Shift lights, timing tower, Race Control & HUD
 │   ├── TrackNavigationMap.tsx   # Top-right 2D vector GPS circuit minimap
 │   └── babylon/
 │       ├── BabylonRacingGame.tsx    # Babylon.js engine, render loop, and camera
@@ -285,9 +315,9 @@ formula-racing-3d/
 │   └── tracks.ts                # Track waypoints, sector splits, and DRS zones
 ├── lib/
 │   ├── ai/
-│   │   └── AIDriver.ts          # AI grid simulator and curvature pathfinding
+│   │   └── AIDriver.ts          # AI grid simulator, TTC braking & overtaking
 │   ├── audio/
-│   │   └── EngineSound.ts       # Synthesized Web Audio API sound engine
+│   │   └── EngineSound.ts       # Synthesized Web Audio API sound & impact engine
 │   ├── babylon/
 │   │   └── havokLoader.ts       # Havok WASM physics plugin loader
 │   ├── commentary/
@@ -296,10 +326,11 @@ formula-racing-3d/
 │   │   ├── BarrierSparkSystem.ts # Particle spark system on collisions
 │   │   └── TireSmokeSystem.ts    # Particle tire smoke on lockups
 │   ├── input/
-│   │   └── InputManager.ts      # Keyboard/gamepad inputs & steering sensitivity
+│   │   └── InputManager.ts      # Keyboard, gamepad, touch & gyro inputs
 │   ├── math/
 │   │   └── Spline3D.ts          # Arc-length Catmull-Rom spline calculations
 │   └── physics/
+│       ├── CollisionSystem.ts   # Zero-allocation 2D OBB SAT collision & penalties
 │       └── VehiclePhysics.ts    # Pacejka tire slip, downforce, gearbox, barriers
 ├── public/
 │   ├── assets/
@@ -307,6 +338,7 @@ formula-racing-3d/
 │   │       └── environmentSpecular.env # Prefiltered IBL environment reflection probe
 │   ├── HavokPhysics.wasm        # Havok physics WebAssembly binary
 │   ├── logo.svg                 # Vector brand logo
+│   ├── manifest.json            # Fullscreen landscape PWA web app manifest
 │   ├── promotional_poster.jpg   # Master 1920x1080 promotional showcase poster
 │   ├── social_preview.jpg       # OpenGraph 16:9 social media promotional banner
 │   ├── screenshots/             # High-resolution visual showcase captures

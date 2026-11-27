@@ -16,6 +16,7 @@ import { Spline3D } from "@/lib/math/Spline3D";
 
 export function createBabylonTrack(track: Track, spline: Spline3D, scene: Scene) {
   const root = new TransformNode("trackRoot", scene);
+  const maxAnisotropy = Math.min(8, scene.getEngine().getCaps().maxAnisotropy || 1);
   const segments = 640;
   const halfW = track.width * 0.5;
   const kerbW = 0.95;
@@ -185,6 +186,7 @@ export function createBabylonTrack(track: Track, spline: Spline3D, scene: Scene)
     asphaltTexture.uScale = 1;
     asphaltTexture.vScale = 85;
   }
+  asphaltTexture.anisotropicFilteringLevel = maxAnisotropy;
 
   // High-frequency Procedural Asphalt Normal Bump Map for aggregate micro-facets
   const asphaltNormalTexture = new DynamicTexture("asphaltNormal", { width: 512, height: 512 }, scene);
@@ -205,6 +207,7 @@ export function createBabylonTrack(track: Track, spline: Spline3D, scene: Scene)
     asphaltNormalTexture.uScale = 4;
     asphaltNormalTexture.vScale = 120;
   }
+  asphaltNormalTexture.anisotropicFilteringLevel = maxAnisotropy;
 
   const roadMaterial = new PBRMaterial("pbrRoad", scene);
   roadMaterial.albedoTexture = asphaltTexture;
@@ -252,6 +255,7 @@ export function createBabylonTrack(track: Track, spline: Spline3D, scene: Scene)
     kerbTex.uScale = 1;
     kerbTex.vScale = 90;
   }
+  kerbTex.anisotropicFilteringLevel = maxAnisotropy;
 
   const kerbMat = new PBRMaterial("kerbMat", scene);
   kerbMat.albedoTexture = kerbTex;
@@ -304,6 +308,7 @@ export function createBabylonTrack(track: Track, spline: Spline3D, scene: Scene)
     groundTex.uScale = 90;
     groundTex.vScale = 90;
   }
+  groundTex.anisotropicFilteringLevel = maxAnisotropy;
 
   const groundMat = new PBRMaterial("groundMat", scene);
   groundMat.albedoTexture = groundTex;
@@ -417,6 +422,7 @@ export function createBabylonTrack(track: Track, spline: Spline3D, scene: Scene)
     mCtx150.fillText("150", 64, 32);
     markerTex150.update();
   }
+  markerTex150.anisotropicFilteringLevel = maxAnisotropy;
   const mMat150 = new StandardMaterial("mMat150", scene);
   mMat150.diffuseTexture = markerTex150;
 
@@ -432,6 +438,7 @@ export function createBabylonTrack(track: Track, spline: Spline3D, scene: Scene)
     mCtx100.fillText("100", 64, 32);
     markerTex100.update();
   }
+  markerTex100.anisotropicFilteringLevel = maxAnisotropy;
   const mMat100 = new StandardMaterial("mMat100", scene);
   mMat100.diffuseTexture = markerTex100;
 
@@ -447,6 +454,7 @@ export function createBabylonTrack(track: Track, spline: Spline3D, scene: Scene)
     mCtx50.fillText("50", 64, 32);
     markerTex50.update();
   }
+  markerTex50.anisotropicFilteringLevel = maxAnisotropy;
   const mMat50 = new StandardMaterial("mMat50", scene);
   mMat50.diffuseTexture = markerTex50;
 

@@ -295,6 +295,11 @@ export default function BabylonRacingGame({
         stencil: false,
         powerPreference: "high-performance"
       });
+      const applyHardwareScaling = () => {
+        const dpr = typeof window !== "undefined" ? window.devicePixelRatio || 1 : 1;
+        engine.setHardwareScalingLevel(1 / Math.min(dpr, isMobileTier ? 1.5 : 2));
+      };
+      applyHardwareScaling();
       engineRef.current = engine;
       scene = new Scene(engine);
       scene.clearColor = Color4.FromHexString(`${track.skyColor}FF`);
@@ -401,13 +406,13 @@ export default function BabylonRacingGame({
 
       pipeline.chromaticAberrationEnabled = !isMobileTier;
       if (!isMobileTier && pipeline.chromaticAberration) {
-        pipeline.chromaticAberration.aberrationAmount = 2.4;
-        pipeline.chromaticAberration.radialIntensity = 0.75;
+        pipeline.chromaticAberration.aberrationAmount = 0.7;
+        pipeline.chromaticAberration.radialIntensity = 0.25;
       }
 
       pipeline.grainEnabled = !isMobileTier;
       if (!isMobileTier && pipeline.grain) {
-        pipeline.grain.intensity = 5.0;
+        pipeline.grain.intensity = 1.5;
         pipeline.grain.animated = false;
       }
 
@@ -431,11 +436,12 @@ export default function BabylonRacingGame({
           console.warn("SSAO2 fallback:", e);
         }
 
-        // Velocity-dependent Motion Blur
+        // Velocity-dependent Motion Blur (object-based so player car stays sharp)
         try {
           motionBlur = new MotionBlurPostProcess("motionBlur", scene, 1.0, camera);
           motionBlur.motionStrength = 0;
-          motionBlur.isObjectBased = false;
+          motionBlur.isObjectBased = true;
+          motionBlur.motionBlurSamples = 16;
         } catch (e) {
           console.warn("MotionBlur fallback:", e);
         }
@@ -611,10 +617,11 @@ export default function BabylonRacingGame({
             barrierSparkSystem.update(isNearBarrier, isSkidPlank, tData.speedMs);
           }
 
-          // Update Motion Blur strength based on velocity
+          // Update Motion Blur strength based on velocity (~0.3x of original 0.65 cap)
           if (motionBlur) {
-            const speedRatio = Math.min(1, Math.max(0, (tData.speedMs || 0) / 85));
-            motionBlur.motionStrength = speedRatio * 0.65;
+            const speedMs = tData.speedMs || 0;
+            const speedRatio = Math.min(1, Math.max(0, (speedMs - 20) / 65));
+            motionBlur.motionStrength = speedRatio * 0.2;
           }
 
           // Update Camera Position & Target based on mutable cameraModeRef
@@ -626,13 +633,14 @@ export default function BabylonRacingGame({
           const joltAmt = cameraJoltRef.current;
           const joltX = joltAmt > 0.002 ? Math.sin(performance.now() * 0.14) * joltAmt : 0;
           const joltY = joltAmt > 0.002 ? Math.cos(performance.now() * 0.19) * joltAmt * 0.65 : 0;
+          let targetFov = 1.1;
 
           if (currentCamMode === "chase") {
             // Low, dynamic chase camera (5.2m back, 1.85m high)
             const camDist = 5.2;
             const camHeight = 1.85;
-            // High-speed chassis shake / road texture vibration
-            const speedShake = safeSpeedMs > 55 ? (Math.sin(performance.now() * 0.05) * 0.015 * ((safeSpeedMs - 55) / 35)) : 0;
+            // Subtle high-speed chassis vibration (~0.3x amplitude, lower frequency to prevent frame aliasing)
+            const speedShake = safeSpeedMs > 55 ? (Math.sin(performance.now() * 0.025) * 0.0045 * ((safeSpeedMs - 55) / 35)) : 0;
             const camX = px - Math.sin(heading) * camDist + joltX;
             const camY = py + camHeight + speedShake + joltY;
             const camZ = pz - Math.cos(heading) * camDist;
@@ -645,7 +653,7 @@ export default function BabylonRacingGame({
             camera.setTarget(camTargetCurrent);
 
             // Speed FOV expansion (62 deg to 78 deg)
-            camera.fov = 1.08 + (safeSpeedMs / 95) * 0.28;
+            targetFov = 1.08 + (safeSpeedMs / 95) * 0.28;
           } else if (currentCamMode === "cockpit") {
             // Cockpit / Halo eye view looking out over steering wheel and front tires
             const eyeDist = -0.15;
@@ -662,7 +670,7 @@ export default function BabylonRacingGame({
             );
             camera.position.copyFrom(camDesired);
             camera.setTarget(camTarget);
-            camera.fov = 1.25;
+            targetFov = 1.25;
           } else {
             // Front wing / Nose cone bumper view forward over tarmac
             const noseDist = 2.5;
@@ -679,8 +687,10 @@ export default function BabylonRacingGame({
             );
             camera.position.copyFrom(camDesired);
             camera.setTarget(camTarget);
-            camera.fov = 1.35;
+            targetFov = 1.35;
           }
+
+          camera.fov += (targetFov - camera.fov) * (1 - Math.exp(-8 * dt));
 
           // Engine Audio
           engineAudio.update(
@@ -759,7 +769,12 @@ export default function BabylonRacingGame({
         scene.render();
       });
 
-      onResize = () => engine && engine.resize();
+      onResize = () => {
+        if (engine) {
+          applyHardwareScaling();
+          engine.resize();
+        }
+      };
       window.addEventListener("resize", onResize);
     }
 

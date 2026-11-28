@@ -1,5 +1,6 @@
 // Formula Racing 3D — Babylon.js Track & Infrastructure Generator
-// Synchronized with Spline3D and VehiclePhysics with high-fidelity PBR environment
+// Synchronized with Spline3D and VehiclePhysics with multi-layer PBR tarmac, beveled kerbs,
+// W-beam Armco barriers, alpha-tested catch fencing, and instanced trackside props.
 import {
   Scene,
   MeshBuilder,
@@ -13,10 +14,30 @@ import {
 } from "@babylonjs/core";
 import { Track } from "@/data/tracks";
 import { Spline3D } from "@/lib/math/Spline3D";
+import { createTracksideProps, TrackPropsHandle } from "@/lib/babylon/TrackPropsGenerator";
 
-export function createBabylonTrack(track: Track, spline: Spline3D, scene: Scene) {
+export interface TrackGenerationOptions {
+  wetness?: number;
+  isNight?: boolean;
+  propDensity?: number;
+}
+
+export interface TrackGenerationResult {
+  root: TransformNode;
+  props: TrackPropsHandle;
+}
+
+export function createBabylonTrack(
+  track: Track,
+  spline: Spline3D,
+  scene: Scene,
+  options: TrackGenerationOptions = {}
+): TrackGenerationResult {
   const root = new TransformNode("trackRoot", scene);
   const maxAnisotropy = Math.min(8, scene.getEngine().getCaps().maxAnisotropy || 1);
+  const wetness = Math.max(0, Math.min(1, options.wetness ?? 0));
+  const isWet = wetness > 0.35;
+
   const segments = 640;
   const halfW = track.width * 0.5;
   const kerbW = 0.95;
@@ -35,8 +56,10 @@ export function createBabylonTrack(track: Track, spline: Spline3D, scene: Scene)
   const rightRoadPath: Vector3[] = [];
 
   const leftKerbInner: Vector3[] = [];
+  const leftKerbMid: Vector3[] = [];
   const leftKerbOuter: Vector3[] = [];
   const rightKerbInner: Vector3[] = [];
+  const rightKerbMid: Vector3[] = [];
   const rightKerbOuter: Vector3[] = [];
 
   const leftRunoffInner: Vector3[] = [];
@@ -47,8 +70,13 @@ export function createBabylonTrack(track: Track, spline: Spline3D, scene: Scene)
   const leftSkirtOuter: Vector3[] = [];
   const rightSkirtOuter: Vector3[] = [];
 
-  const leftBarrierPath: Vector3[] = [];
-  const rightBarrierPath: Vector3[] = [];
+  // Corrugated W-beam Armco barrier paths (3 vertical ribs)
+  const leftBarrierBottom: Vector3[] = [];
+  const leftBarrierMidIn: Vector3[] = [];
+  const leftBarrierTop: Vector3[] = [];
+  const rightBarrierBottom: Vector3[] = [];
+  const rightBarrierMidIn: Vector3[] = [];
+  const rightBarrierTop: Vector3[] = [];
 
   const leftFenceTopPath: Vector3[] = [];
   const leftFenceBottomPath: Vector3[] = [];
@@ -80,51 +108,49 @@ export function createBabylonTrack(track: Track, spline: Spline3D, scene: Scene)
     const bankedSide = Vector3.Cross(tangent, bankAxis).normalize();
 
     // 1. Asphalt Road surface (elevated 0.03m above centerline)
-    const lRoad = pt.add(bankedSide.scale(halfW)).add(new Vector3(0, 0.03, 0));
-    const rRoad = pt.add(bankedSide.scale(-halfW)).add(new Vector3(0, 0.03, 0));
-    leftRoadPath.push(lRoad);
-    rightRoadPath.push(rRoad);
+    leftRoadPath.push(pt.add(bankedSide.scale(halfW)).add(new Vector3(0, 0.03, 0)));
+    rightRoadPath.push(pt.add(bankedSide.scale(-halfW)).add(new Vector3(0, 0.03, 0)));
 
-    // 2. 3D Kerbs (distinct elevation: inner 0.034m, outer 0.068m)
-    const lKerbIn = pt.add(bankedSide.scale(halfW)).add(new Vector3(0, 0.034, 0));
-    const rKerbIn = pt.add(bankedSide.scale(-halfW)).add(new Vector3(0, 0.034, 0));
-    const lKerbOut = pt.add(bankedSide.scale(halfW + kerbW)).add(new Vector3(0, 0.068, 0));
-    const rKerbOut = pt.add(bankedSide.scale(-(halfW + kerbW))).add(new Vector3(0, 0.068, 0));
-    leftKerbInner.push(lKerbIn);
-    leftKerbOuter.push(lKerbOut);
-    rightKerbInner.push(rKerbIn);
-    rightKerbOuter.push(rKerbOut);
+    // 2. Beveled 3D Kerbs (inner apron -> raised rumble lip -> outer slope)
+    leftKerbInner.push(pt.add(bankedSide.scale(halfW)).add(new Vector3(0, 0.034, 0)));
+    leftKerbMid.push(pt.add(bankedSide.scale(halfW + kerbW * 0.55)).add(new Vector3(0, 0.078, 0)));
+    leftKerbOuter.push(pt.add(bankedSide.scale(halfW + kerbW)).add(new Vector3(0, 0.048, 0)));
 
-    // 3. AstroTurf Runoffs (inner 0.04m, outer 0.025m sloping gently outward)
-    const lRunoffIn = pt.add(bankedSide.scale(halfW + kerbW)).add(new Vector3(0, 0.04, 0));
-    const rRunoffIn = pt.add(bankedSide.scale(-(halfW + kerbW))).add(new Vector3(0, 0.04, 0));
-    const lRunoffOut = pt.add(bankedSide.scale(barrierOffset)).add(new Vector3(0, 0.025, 0));
-    const rRunoffOut = pt.add(bankedSide.scale(-barrierOffset)).add(new Vector3(0, 0.025, 0));
-    leftRunoffInner.push(lRunoffIn);
-    leftRunoffOuter.push(lRunoffOut);
-    rightRunoffInner.push(rRunoffIn);
-    rightRunoffOuter.push(rRunoffOut);
+    rightKerbInner.push(pt.add(bankedSide.scale(-halfW)).add(new Vector3(0, 0.034, 0)));
+    rightKerbMid.push(pt.add(bankedSide.scale(-(halfW + kerbW * 0.55))).add(new Vector3(0, 0.078, 0)));
+    rightKerbOuter.push(pt.add(bankedSide.scale(-(halfW + kerbW))).add(new Vector3(0, 0.048, 0)));
+
+    // 3. Runoff Synthetic AstroTurf / Gravel
+    leftRunoffInner.push(pt.add(bankedSide.scale(halfW + kerbW)).add(new Vector3(0, 0.04, 0)));
+    rightRunoffInner.push(pt.add(bankedSide.scale(-(halfW + kerbW))).add(new Vector3(0, 0.04, 0)));
+    leftRunoffOuter.push(pt.add(bankedSide.scale(barrierOffset)).add(new Vector3(0, 0.025, 0)));
+    rightRunoffOuter.push(pt.add(bankedSide.scale(-barrierOffset)).add(new Vector3(0, 0.025, 0)));
 
     // 4. Grass Embankment Skirts (anchoring track to surrounding terrain)
-    const lSkirtOut = pt.add(bankedSide.scale(barrierOffset + 14.0)).add(new Vector3(0, -3.8, 0));
-    const rSkirtOut = pt.add(bankedSide.scale(-(barrierOffset + 14.0))).add(new Vector3(0, -3.8, 0));
-    leftSkirtOuter.push(lSkirtOut);
-    rightSkirtOuter.push(rSkirtOut);
+    leftSkirtOuter.push(pt.add(bankedSide.scale(barrierOffset + 18.0)).add(new Vector3(0, -4.2, 0)));
+    rightSkirtOuter.push(pt.add(bankedSide.scale(-(barrierOffset + 18.0))).add(new Vector3(0, -4.2, 0)));
 
-    // 5. Armco Barriers (calibrated height 0.42m above surface)
-    const lBarrier = pt.add(bankedSide.scale(barrierOffset)).add(new Vector3(0, 0.42, 0));
-    const rBarrier = pt.add(bankedSide.scale(-barrierOffset)).add(new Vector3(0, 0.42, 0));
-    leftBarrierPath.push(lBarrier);
-    rightBarrierPath.push(rBarrier);
+    // 5. Corrugated W-Beam Armco Barriers (0.24m to 0.72m height)
+    const lBase = pt.add(bankedSide.scale(barrierOffset));
+    const rBase = pt.add(bankedSide.scale(-barrierOffset));
+    leftBarrierBottom.push(lBase.add(new Vector3(0, 0.22, 0)));
+    leftBarrierMidIn.push(lBase.add(bankedSide.scale(-0.08)).add(new Vector3(0, 0.46, 0)));
+    leftBarrierTop.push(lBase.add(new Vector3(0, 0.72, 0)));
 
-    // 6. FIA Catch Fence paths (above Armco from 0.42m to 2.1m)
-    leftFenceBottomPath.push(lBarrier);
-    leftFenceTopPath.push(lBarrier.add(new Vector3(0, 1.68, 0)));
-    rightFenceBottomPath.push(rBarrier);
-    rightFenceTopPath.push(rBarrier.add(new Vector3(0, 1.68, 0)));
+    rightBarrierBottom.push(rBase.add(new Vector3(0, 0.22, 0)));
+    rightBarrierMidIn.push(rBase.add(bankedSide.scale(0.08)).add(new Vector3(0, 0.46, 0)));
+    rightBarrierTop.push(rBase.add(new Vector3(0, 0.72, 0)));
+
+    // 6. FIA Catch Fence paths (above Armco from 0.72m to 2.35m)
+    leftFenceBottomPath.push(lBase.add(new Vector3(0, 0.72, 0)));
+    leftFenceTopPath.push(lBase.add(new Vector3(0, 2.35, 0)));
+    rightFenceBottomPath.push(rBase.add(new Vector3(0, 0.72, 0)));
+    rightFenceTopPath.push(rBase.add(new Vector3(0, 2.35, 0)));
   }
 
-  // 1. Procedural PBR Asphalt Road with seamless closed loop
+  // =========================================================================
+  // 1. Multi-Layer PBR Asphalt Road (No repeating start/finish line!)
+  // =========================================================================
   const roadMesh = MeshBuilder.CreateRibbon(
     "babylonRoad",
     { pathArray: [leftRoadPath, rightRoadPath], closeArray: false, closePath: true, sideOrientation: Mesh.DOUBLESIDE },
@@ -133,121 +159,236 @@ export function createBabylonTrack(track: Track, spline: Spline3D, scene: Scene)
   roadMesh.parent = root;
   roadMesh.receiveShadows = true;
 
-  // High-fidelity Procedural Asphalt Texture with Grid Slots and Rubbering
   const asphaltTexture = new DynamicTexture("asphaltTexture", { width: 1024, height: 1024 }, scene);
   const ctx = asphaltTexture.getContext() as CanvasRenderingContext2D;
   if (ctx) {
-    // Rich asphalt base color
-    ctx.fillStyle = "#1b1d21";
+    // Deep weathered tarmac base (slightly darker when wet)
+    ctx.fillStyle = isWet ? "#16181c" : "#22252b";
     ctx.fillRect(0, 0, 1024, 1024);
 
-    // High frequency aggregate stone speckles
-    for (let i = 0; i < 48000; i++) {
+    // Multi-scale aggregate speckles (seamless across V)
+    for (let i = 0; i < 65000; i++) {
       const x = Math.random() * 1024;
       const y = Math.random() * 1024;
-      const gray = Math.floor(22 + Math.random() * 42);
-      ctx.fillStyle = `rgb(${gray},${gray},${gray})`;
-      ctx.fillRect(x, y, 1.8, 1.8);
+      const base = isWet ? 18 : 26;
+      const gray = Math.floor(base + Math.random() * 34);
+      const sz = Math.random() > 0.85 ? 2.2 : 1.3;
+      ctx.fillStyle = `rgb(${gray},${gray},${gray + 2})`;
+      ctx.fillRect(x, y, sz, sz);
     }
 
-    // Rubbered racing grooves
+    // Rubbered-in racing grooves (subtle dark tire tracks, clean center crown)
     const grad = ctx.createLinearGradient(0, 0, 1024, 0);
-    grad.addColorStop(0, "rgba(16, 18, 20, 0.15)");
-    grad.addColorStop(0.32, "rgba(8, 9, 11, 0.72)"); // Left tire groove
-    grad.addColorStop(0.48, "rgba(22, 24, 28, 0.2)");
-    grad.addColorStop(0.68, "rgba(8, 9, 11, 0.72)"); // Right tire groove
-    grad.addColorStop(1, "rgba(16, 18, 20, 0.15)");
+    grad.addColorStop(0.0, "rgba(12, 13, 16, 0.25)");
+    grad.addColorStop(0.10, "rgba(28, 30, 35, 0.08)");
+    grad.addColorStop(0.30, "rgba(7, 8, 10, 0.52)");
+    grad.addColorStop(0.46, "rgba(24, 26, 30, 0.10)");
+    grad.addColorStop(0.54, "rgba(24, 26, 30, 0.10)");
+    grad.addColorStop(0.70, "rgba(7, 8, 10, 0.52)");
+    grad.addColorStop(0.90, "rgba(28, 30, 35, 0.08)");
+    grad.addColorStop(1.0, "rgba(12, 13, 16, 0.25)");
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, 1024, 1024);
 
-    // Crisp white track boundary lines
-    ctx.fillStyle = "#f1f5f9";
-    ctx.fillRect(20, 0, 24, 1024);
-    ctx.fillRect(980, 0, 24, 1024);
+    // Subtle longitudinal seam lines & weathered track edge lines (off-white so no bloom blowout)
+    ctx.fillStyle = "rgba(14, 16, 20, 0.35)";
+    ctx.fillRect(510, 0, 4, 1024);
 
-    // Start / Finish checkered line in texture repeat
-    ctx.fillStyle = "#ffffff";
-    const checkSize = 32;
-    for (let row = 0; row < 2; row++) {
-      for (let col = 0; col < 1024 / checkSize; col++) {
-        if ((row + col) % 2 === 0) {
-          ctx.fillRect(col * checkSize, row * checkSize + 2, checkSize, checkSize);
-        }
-      }
-    }
-
-    // Grid boxes on starting straight
-    ctx.strokeStyle = "rgba(255, 255, 255, 0.65)";
-    ctx.lineWidth = 4;
-    ctx.strokeRect(180, 120, 220, 140);
-    ctx.strokeRect(624, 280, 220, 140);
+    ctx.fillStyle = "#cfd6df";
+    ctx.fillRect(18, 0, 20, 1024);
+    ctx.fillRect(986, 0, 20, 1024);
 
     asphaltTexture.update();
     asphaltTexture.uScale = 1;
-    asphaltTexture.vScale = 85;
+    asphaltTexture.vScale = 96;
   }
   asphaltTexture.anisotropicFilteringLevel = maxAnisotropy;
 
-  // High-frequency Procedural Asphalt Normal Bump Map for aggregate micro-facets
-  const asphaltNormalTexture = new DynamicTexture("asphaltNormal", { width: 512, height: 512 }, scene);
+  // Coupled Height-Field Normal Map (Sobel filtered) + Roughness Texture
+  const normSize = 512;
+  const asphaltNormalTexture = new DynamicTexture("asphaltNormal", { width: normSize, height: normSize }, scene);
   const nCtx = asphaltNormalTexture.getContext() as CanvasRenderingContext2D;
   if (nCtx) {
-    const imgData = nCtx.createImageData(512, 512);
-    const data = imgData.data;
-    for (let i = 0; i < data.length; i += 4) {
-      const noiseX = (Math.random() - 0.5) * 44;
-      const noiseY = (Math.random() - 0.5) * 44;
-      data[i] = Math.min(255, Math.max(0, 128 + noiseX));
-      data[i + 1] = Math.min(255, Math.max(0, 128 + noiseY));
-      data[i + 2] = 250;
-      data[i + 3] = 255;
+    const heightField = new Float32Array(normSize * normSize);
+    for (let y = 0; y < normSize; y++) {
+      for (let x = 0; x < normSize; x++) {
+        // Coarse + fine aggregate height
+        const coarse = Math.sin(x * 0.11) * Math.cos(y * 0.11) * 0.25;
+        heightField[y * normSize + x] = coarse + Math.random() * 0.75;
+      }
+    }
+    const imgData = nCtx.createImageData(normSize, normSize);
+    const d = imgData.data;
+    const strength = 2.6;
+    for (let y = 0; y < normSize; y++) {
+      const yPrev = (y - 1 + normSize) % normSize;
+      const yNext = (y + 1) % normSize;
+      for (let x = 0; x < normSize; x++) {
+        const xPrev = (x - 1 + normSize) % normSize;
+        const xNext = (x + 1) % normSize;
+        const dX = (heightField[y * normSize + xNext] - heightField[y * normSize + xPrev]) * strength;
+        const dY = (heightField[yNext * normSize + x] - heightField[yPrev * normSize + x]) * strength;
+        const invLen = 1 / Math.sqrt(dX * dX + dY * dY + 1);
+        const idx = (y * normSize + x) * 4;
+        d[idx] = Math.round(((-dX * invLen) * 0.5 + 0.5) * 255);
+        d[idx + 1] = Math.round(((-dY * invLen) * 0.5 + 0.5) * 255);
+        d[idx + 2] = Math.round(((invLen) * 0.5 + 0.5) * 255);
+        d[idx + 3] = 255;
+      }
     }
     nCtx.putImageData(imgData, 0, 0);
     asphaltNormalTexture.update();
-    asphaltNormalTexture.uScale = 4;
-    asphaltNormalTexture.vScale = 120;
+    asphaltNormalTexture.uScale = 6;
+    asphaltNormalTexture.vScale = 180;
   }
   asphaltNormalTexture.anisotropicFilteringLevel = maxAnisotropy;
+
+  // Roughness map (G channel = roughness, B channel = metallic): rubbered grooves are smoother than shoulders
+  const asphaltRoughTex = new DynamicTexture("asphaltRoughness", { width: 256, height: 256 }, scene);
+  const rCtx = asphaltRoughTex.getContext() as CanvasRenderingContext2D;
+  if (rCtx) {
+    const rGrad = rCtx.createLinearGradient(0, 0, 256, 0);
+    const grooveRough = isWet ? 38 : 132;
+    const midRough = isWet ? 85 : 196;
+    const edgeRough = isWet ? 128 : 228;
+    rGrad.addColorStop(0.0, `rgb(0,${edgeRough},10)`);
+    rGrad.addColorStop(0.30, `rgb(0,${grooveRough},18)`);
+    rGrad.addColorStop(0.50, `rgb(0,${midRough},12)`);
+    rGrad.addColorStop(0.70, `rgb(0,${grooveRough},18)`);
+    rGrad.addColorStop(1.0, `rgb(0,${edgeRough},10)`);
+    rCtx.fillStyle = rGrad;
+    rCtx.fillRect(0, 0, 256, 256);
+    asphaltRoughTex.update();
+    asphaltRoughTex.uScale = 1;
+    asphaltRoughTex.vScale = 24;
+  }
 
   const roadMaterial = new PBRMaterial("pbrRoad", scene);
   roadMaterial.albedoTexture = asphaltTexture;
   roadMaterial.bumpTexture = asphaltNormalTexture;
-  roadMaterial.bumpTexture.level = 0.75;
-  roadMaterial.roughness = 0.58;
-  roadMaterial.metallic = 0.12;
-  roadMaterial.clearCoat.isEnabled = true;
-  roadMaterial.clearCoat.intensity = 0.45;
-  roadMaterial.clearCoat.roughness = 0.35;
+  roadMaterial.bumpTexture.level = isWet ? 0.45 : 0.72;
+  roadMaterial.metallicTexture = asphaltRoughTex;
+  roadMaterial.useRoughnessFromMetallicTextureAlpha = false;
+  roadMaterial.useRoughnessFromMetallicTextureGreen = true;
+  roadMaterial.useMetallnessFromMetallicTextureBlue = true;
+  roadMaterial.roughness = 1.0;
+  roadMaterial.metallic = 1.0;
+
+  if (isWet) {
+    roadMaterial.clearCoat.isEnabled = true;
+    roadMaterial.clearCoat.intensity = wetness * 0.92;
+    roadMaterial.clearCoat.roughness = 0.08 + (1.0 - wetness) * 0.14;
+  } else {
+    roadMaterial.clearCoat.isEnabled = false;
+  }
   roadMesh.material = roadMaterial;
 
-  // 2. 3D Kerbs with Alternating Red/White Stripes
+  // =========================================================================
+  // 1b. Dedicated Single Start/Finish Line & Starting Grid Boxes Decal Ribbon
+  // =========================================================================
+  const gridLeft: Vector3[] = [];
+  const gridRight: Vector3[] = [];
+  const gridSteps = 32;
+  const gridStartU = 0.972;
+  const gridEndU = 1.012;
+  for (let i = 0; i <= gridSteps; i++) {
+    const u = ((gridStartU + (i / gridSteps) * (gridEndU - gridStartU)) % 1 + 1) % 1;
+    spline.getPointAtToRef(u, pt);
+    spline.getTangentAtToRef(u, tangent);
+    Vector3.CrossToRef(tangent, up, side);
+    side.normalize();
+    gridLeft.push(pt.add(side.scale(halfW - 0.18)).add(new Vector3(0, 0.036, 0)));
+    gridRight.push(pt.add(side.scale(-(halfW - 0.18))).add(new Vector3(0, 0.036, 0)));
+  }
+
+  const startGridMesh = MeshBuilder.CreateRibbon(
+    "startGridDecal",
+    { pathArray: [gridLeft, gridRight], closeArray: false, closePath: false, sideOrientation: Mesh.DOUBLESIDE },
+    scene
+  );
+  startGridMesh.parent = root;
+  startGridMesh.receiveShadows = true;
+
+  const gridTex = new DynamicTexture("startGridTex", { width: 512, height: 1024 }, scene, false);
+  gridTex.hasAlpha = true;
+  const gDecalCtx = gridTex.getContext() as CanvasRenderingContext2D;
+  if (gDecalCtx) {
+    gDecalCtx.clearRect(0, 0, 512, 1024);
+
+    // Checkered Start/Finish Line near u=0 (approx 70% along this ribbon)
+    const sfY = 720;
+    const sq = 16;
+    for (let row = 0; row < 3; row++) {
+      for (let col = 0; col < 512 / sq; col++) {
+        gDecalCtx.fillStyle = (row + col) % 2 === 0 ? "rgba(232,236,242,0.9)" : "rgba(15,18,24,0.88)";
+        gDecalCtx.fillRect(col * sq, sfY + row * sq, sq, sq);
+      }
+    }
+    // Red FIA Timing Line stripe
+    gDecalCtx.fillStyle = "rgba(215, 25, 25, 0.9)";
+    gDecalCtx.fillRect(0, sfY - 8, 512, 6);
+
+    // Staggered Starting Grid Boxes (6 slots behind start line)
+    gDecalCtx.strokeStyle = "rgba(235, 240, 246, 0.78)";
+    gDecalCtx.lineWidth = 6;
+    for (let slot = 0; slot < 6; slot++) {
+      const isLeft = slot % 2 === 0;
+      const boxX = isLeft ? 105 : 315;
+      const boxY = sfY - 90 - slot * 95;
+      gDecalCtx.beginPath();
+      gDecalCtx.moveTo(boxX, boxY + 34);
+      gDecalCtx.lineTo(boxX, boxY);
+      gDecalCtx.lineTo(boxX + 92, boxY);
+      gDecalCtx.lineTo(boxX + 92, boxY + 34);
+      gDecalCtx.stroke();
+    }
+    gridTex.update();
+  }
+  gridTex.anisotropicFilteringLevel = maxAnisotropy;
+
+  const gridMat = new PBRMaterial("startGridMat", scene);
+  gridMat.albedoTexture = gridTex;
+  gridMat.useAlphaFromAlbedoTexture = true;
+  gridMat.transparencyMode = PBRMaterial.PBRMATERIAL_ALPHABLEND;
+  gridMat.roughness = isWet ? 0.25 : 0.65;
+  gridMat.metallic = 0.04;
+  gridMat.zOffset = -2;
+  startGridMesh.material = gridMat;
+
+  // =========================================================================
+  // 2. Beveled 3D Kerbs (No clearcoat blowout, receives shadows)
+  // =========================================================================
   const leftKerbMesh = MeshBuilder.CreateRibbon(
     "leftKerb",
-    { pathArray: [leftKerbInner, leftKerbOuter], closeArray: false, closePath: true, sideOrientation: Mesh.DOUBLESIDE },
+    { pathArray: [leftKerbInner, leftKerbMid, leftKerbOuter], closeArray: false, closePath: true, sideOrientation: Mesh.DOUBLESIDE },
     scene
   );
   leftKerbMesh.parent = root;
+  leftKerbMesh.receiveShadows = true;
+
   const rightKerbMesh = MeshBuilder.CreateRibbon(
     "rightKerb",
-    { pathArray: [rightKerbInner, rightKerbOuter], closeArray: false, closePath: true, sideOrientation: Mesh.DOUBLESIDE },
+    { pathArray: [rightKerbInner, rightKerbMid, rightKerbOuter], closeArray: false, closePath: true, sideOrientation: Mesh.DOUBLESIDE },
     scene
   );
   rightKerbMesh.parent = root;
+  rightKerbMesh.receiveShadows = true;
 
-  // Procedural Kerb Stripe Texture (red/white alternating diagonal stripes)
   const kerbTex = new DynamicTexture("kerbTex", { width: 256, height: 128 }, scene);
   const kCtx = kerbTex.getContext() as CanvasRenderingContext2D;
   if (kCtx) {
     const stripeW = 32;
     for (let i = 0; i < 8; i++) {
-      kCtx.fillStyle = i % 2 === 0 ? "#dc2626" : "#f8fafc";
+      kCtx.fillStyle = i % 2 === 0 ? "#b91c1c" : "#d8dee6";
       kCtx.fillRect(i * stripeW, 0, stripeW, 128);
+      // Subtle tire scuffing & joint shadows on kerb ribs
+      kCtx.fillStyle = "rgba(15, 18, 22, 0.24)";
+      kCtx.fillRect(i * stripeW, 0, 3, 128);
     }
-    // Kerb bevel edge shading
     const kGrad = kCtx.createLinearGradient(0, 0, 0, 128);
-    kGrad.addColorStop(0, "rgba(255,255,255,0.2)");
-    kGrad.addColorStop(0.8, "rgba(0,0,0,0.0)");
-    kGrad.addColorStop(1, "rgba(0,0,0,0.35)");
+    kGrad.addColorStop(0, "rgba(0,0,0,0.18)");
+    kGrad.addColorStop(0.5, "rgba(255,255,255,0.06)");
+    kGrad.addColorStop(1, "rgba(0,0,0,0.32)");
     kCtx.fillStyle = kGrad;
     kCtx.fillRect(0, 0, 256, 128);
 
@@ -259,35 +400,60 @@ export function createBabylonTrack(track: Track, spline: Spline3D, scene: Scene)
 
   const kerbMat = new PBRMaterial("kerbMat", scene);
   kerbMat.albedoTexture = kerbTex;
-  kerbMat.roughness = 0.42;
-  kerbMat.metallic = 0.08;
-  kerbMat.clearCoat.isEnabled = true;
-  kerbMat.clearCoat.intensity = 0.65;
-  kerbMat.clearCoat.roughness = 0.15;
+  kerbMat.roughness = isWet ? 0.35 : 0.68;
+  kerbMat.metallic = 0.02;
+  kerbMat.clearCoat.isEnabled = false;
   leftKerbMesh.material = kerbMat;
   rightKerbMesh.material = kerbMat;
 
-  // 3. Runoff Synthetic AstroTurf
+  // =========================================================================
+  // 3. Runoff Synthetic AstroTurf / Painted Apron (PBR, receives shadows)
+  // =========================================================================
   const leftRunoffMesh = MeshBuilder.CreateRibbon(
     "leftRunoff",
     { pathArray: [leftRunoffInner, leftRunoffOuter], closeArray: false, closePath: true, sideOrientation: Mesh.DOUBLESIDE },
     scene
   );
   leftRunoffMesh.parent = root;
+  leftRunoffMesh.receiveShadows = true;
+
   const rightRunoffMesh = MeshBuilder.CreateRibbon(
     "rightRunoff",
     { pathArray: [rightRunoffInner, rightRunoffOuter], closeArray: false, closePath: true, sideOrientation: Mesh.DOUBLESIDE },
     scene
   );
   rightRunoffMesh.parent = root;
+  rightRunoffMesh.receiveShadows = true;
 
-  const runoffMat = new StandardMaterial("runoffMat", scene);
-  runoffMat.diffuseColor = new Color3(0.09, 0.2, 0.11);
-  runoffMat.roughness = 0.9;
+  const runoffTex = new DynamicTexture("runoffTex", { width: 256, height: 256 }, scene);
+  const roCtx = runoffTex.getContext() as CanvasRenderingContext2D;
+  if (roCtx) {
+    roCtx.fillStyle = track.id === "monaco" ? "#2d333b" : "#183320";
+    roCtx.fillRect(0, 0, 256, 256);
+    for (let i = 0; i < 6000; i++) {
+      const x = Math.random() * 256;
+      const y = Math.random() * 256;
+      roCtx.fillStyle = track.id === "monaco"
+        ? `rgba(75, 82, 92, ${0.15 + Math.random() * 0.2})`
+        : `rgba(34, 72, 42, ${0.2 + Math.random() * 0.25})`;
+      roCtx.fillRect(x, y, 2, 2);
+    }
+    runoffTex.update();
+    runoffTex.uScale = 2;
+    runoffTex.vScale = 120;
+  }
+  runoffTex.anisotropicFilteringLevel = maxAnisotropy;
+
+  const runoffMat = new PBRMaterial("runoffPBR", scene);
+  runoffMat.albedoTexture = runoffTex;
+  runoffMat.roughness = isWet ? 0.55 : 0.90;
+  runoffMat.metallic = 0.02;
   leftRunoffMesh.material = runoffMat;
   rightRunoffMesh.material = runoffMat;
 
-  // 4. Natural Earth Embankment Skirts
+  // =========================================================================
+  // 4. Natural Earth Embankment Skirts & Ground Plane
+  // =========================================================================
   const groundTex = new DynamicTexture("groundTex", { width: 512, height: 512 }, scene);
   const gCtx = groundTex.getContext() as CanvasRenderingContext2D;
   if (gCtx) {
@@ -297,12 +463,12 @@ export function createBabylonTrack(track: Track, spline: Spline3D, scene: Scene)
     const r = parseInt(track.groundColor.slice(1, 3), 16) || 40;
     const g = parseInt(track.groundColor.slice(3, 5), 16) || 70;
     const b = parseInt(track.groundColor.slice(5, 7), 16) || 45;
-    for (let i = 0; i < 20000; i++) {
+    for (let i = 0; i < 24000; i++) {
       const x = Math.random() * 512;
       const y = Math.random() * 512;
-      const factor = 0.68 + Math.random() * 0.55;
+      const factor = 0.64 + Math.random() * 0.58;
       gCtx.fillStyle = `rgb(${Math.floor(r * factor)},${Math.floor(g * factor)},${Math.floor(b * factor)})`;
-      gCtx.fillRect(x, y, 2.0, 2.5);
+      gCtx.fillRect(x, y, 2.2, 2.6);
     }
     groundTex.update();
     groundTex.uScale = 90;
@@ -322,6 +488,7 @@ export function createBabylonTrack(track: Track, spline: Spline3D, scene: Scene)
   );
   leftSkirtMesh.parent = root;
   leftSkirtMesh.material = groundMat;
+  leftSkirtMesh.receiveShadows = true;
 
   const rightSkirtMesh = MeshBuilder.CreateRibbon(
     "rightSkirt",
@@ -330,36 +497,82 @@ export function createBabylonTrack(track: Track, spline: Spline3D, scene: Scene)
   );
   rightSkirtMesh.parent = root;
   rightSkirtMesh.material = groundMat;
+  rightSkirtMesh.receiveShadows = true;
 
-  // 5. Armco Barriers (calibrated radius 0.16m for sleek F1 guardrail)
-  const leftBarrier = MeshBuilder.CreateTube(
+  // =========================================================================
+  // 5. Corrugated W-Beam Armco Barriers (Galvanized steel, non-blooming)
+  // =========================================================================
+  const leftBarrier = MeshBuilder.CreateRibbon(
     "leftBarrier",
-    { path: leftBarrierPath, radius: 0.16, tessellation: 8, sideOrientation: Mesh.DOUBLESIDE },
+    {
+      pathArray: [leftBarrierBottom, leftBarrierMidIn, leftBarrierTop],
+      closeArray: false,
+      closePath: true,
+      sideOrientation: Mesh.DOUBLESIDE
+    },
     scene
   );
   leftBarrier.parent = root;
-  const rightBarrier = MeshBuilder.CreateTube(
+  leftBarrier.receiveShadows = true;
+
+  const rightBarrier = MeshBuilder.CreateRibbon(
     "rightBarrier",
-    { path: rightBarrierPath, radius: 0.16, tessellation: 8, sideOrientation: Mesh.DOUBLESIDE },
+    {
+      pathArray: [rightBarrierBottom, rightBarrierMidIn, rightBarrierTop],
+      closeArray: false,
+      closePath: true,
+      sideOrientation: Mesh.DOUBLESIDE
+    },
     scene
   );
   rightBarrier.parent = root;
+  rightBarrier.receiveShadows = true;
 
   const barrierMat = new PBRMaterial("barrierPBR", scene);
-  barrierMat.albedoColor = new Color3(0.92, 0.94, 0.98);
-  barrierMat.metallic = 0.98;
-  barrierMat.roughness = 0.16;
-  barrierMat.clearCoat.isEnabled = true;
-  barrierMat.clearCoat.intensity = 0.85;
-  barrierMat.clearCoat.roughness = 0.08;
+  barrierMat.albedoColor = new Color3(0.54, 0.57, 0.62);
+  barrierMat.metallic = 0.68;
+  barrierMat.roughness = 0.44;
+  barrierMat.clearCoat.isEnabled = false;
   leftBarrier.material = barrierMat;
   rightBarrier.material = barrierMat;
 
-  // 6. FIA Catch Fencing above Armco
+  // =========================================================================
+  // 6. Alpha-Tested FIA Chain-Link Catch Fencing
+  // =========================================================================
+  const fenceTex = new DynamicTexture("fenceMeshTex", { width: 128, height: 128 }, scene, false);
+  fenceTex.hasAlpha = true;
+  const fCtx = fenceTex.getContext() as CanvasRenderingContext2D;
+  if (fCtx) {
+    fCtx.clearRect(0, 0, 128, 128);
+    fCtx.strokeStyle = "rgba(155, 165, 178, 0.85)";
+    fCtx.lineWidth = 4;
+    for (let offset = -128; offset <= 256; offset += 24) {
+      fCtx.beginPath();
+      fCtx.moveTo(offset, 0);
+      fCtx.lineTo(offset + 128, 128);
+      fCtx.stroke();
+
+      fCtx.beginPath();
+      fCtx.moveTo(offset, 128);
+      fCtx.lineTo(offset + 128, 0);
+      fCtx.stroke();
+    }
+    // Top and bottom tension cables
+    fCtx.fillStyle = "rgba(180, 188, 198, 0.9)";
+    fCtx.fillRect(0, 0, 128, 5);
+    fCtx.fillRect(0, 123, 128, 5);
+    fenceTex.update();
+    fenceTex.uScale = 180;
+    fenceTex.vScale = 2;
+  }
+
   const fenceMat = new StandardMaterial("fenceMat", scene);
-  fenceMat.diffuseColor = new Color3(0.3, 0.35, 0.4);
-  fenceMat.alpha = 0.35;
+  fenceMat.diffuseTexture = fenceTex;
+  fenceMat.useAlphaFromDiffuseTexture = true;
+  fenceMat.transparencyMode = StandardMaterial.MATERIAL_ALPHATEST;
+  fenceMat.alphaCutOff = 0.35;
   fenceMat.backFaceCulling = false;
+  fenceMat.specularColor = new Color3(0.2, 0.2, 0.2);
 
   const leftFence = MeshBuilder.CreateRibbon(
     "leftFence",
@@ -377,188 +590,23 @@ export function createBabylonTrack(track: Track, spline: Spline3D, scene: Scene)
   rightFence.parent = root;
   rightFence.material = fenceMat;
 
-  // 7. Track-side Marshal Posts along barriers
-  const postSpacing = Math.floor(segments / 32);
-  for (let i = 0; i < segments; i += postSpacing) {
-    const lPos = leftBarrierPath[i];
-    const rPos = rightBarrierPath[i];
-
-    if (lPos) {
-      const lPost = MeshBuilder.CreateCylinder(`lPost_${i}`, {
-        diameter: 0.14,
-        height: 2.2,
-        tessellation: 6
-      }, scene);
-      lPost.parent = root;
-      lPost.position = new Vector3(lPos.x, lPos.y + 0.6, lPos.z);
-      lPost.material = barrierMat;
-    }
-    if (rPos) {
-      const rPost = MeshBuilder.CreateCylinder(`rPost_${i}`, {
-        diameter: 0.14,
-        height: 2.2,
-        tessellation: 6
-      }, scene);
-      rPost.parent = root;
-      rPost.position = new Vector3(rPos.x, rPos.y + 0.6, rPos.z);
-      rPost.material = barrierMat;
-    }
-  }
-
-  // 8. Brake Distance Marker Boards (150m, 100m, 50m) preceding corner apexes
-  const brakeMat = new StandardMaterial("brakeBoardMat", scene);
-  brakeMat.diffuseColor = new Color3(0.95, 0.95, 0.95);
-  brakeMat.specularColor = new Color3(0.2, 0.2, 0.2);
-
-  const markerTex150 = new DynamicTexture("m150", { width: 128, height: 64 }, scene);
-  const mCtx150 = markerTex150.getContext() as CanvasRenderingContext2D;
-  if (mCtx150) {
-    mCtx150.fillStyle = "#ffffff";
-    mCtx150.fillRect(0, 0, 128, 64);
-    mCtx150.fillStyle = "#000000";
-    mCtx150.font = "bold 44px sans-serif";
-    mCtx150.textAlign = "center";
-    mCtx150.textBaseline = "middle";
-    mCtx150.fillText("150", 64, 32);
-    markerTex150.update();
-  }
-  markerTex150.anisotropicFilteringLevel = maxAnisotropy;
-  const mMat150 = new StandardMaterial("mMat150", scene);
-  mMat150.diffuseTexture = markerTex150;
-
-  const markerTex100 = new DynamicTexture("m100", { width: 128, height: 64 }, scene);
-  const mCtx100 = markerTex100.getContext() as CanvasRenderingContext2D;
-  if (mCtx100) {
-    mCtx100.fillStyle = "#ffffff";
-    mCtx100.fillRect(0, 0, 128, 64);
-    mCtx100.fillStyle = "#000000";
-    mCtx100.font = "bold 44px sans-serif";
-    mCtx100.textAlign = "center";
-    mCtx100.textBaseline = "middle";
-    mCtx100.fillText("100", 64, 32);
-    markerTex100.update();
-  }
-  markerTex100.anisotropicFilteringLevel = maxAnisotropy;
-  const mMat100 = new StandardMaterial("mMat100", scene);
-  mMat100.diffuseTexture = markerTex100;
-
-  const markerTex50 = new DynamicTexture("m50", { width: 128, height: 64 }, scene);
-  const mCtx50 = markerTex50.getContext() as CanvasRenderingContext2D;
-  if (mCtx50) {
-    mCtx50.fillStyle = "#ffffff";
-    mCtx50.fillRect(0, 0, 128, 64);
-    mCtx50.fillStyle = "#dc2626";
-    mCtx50.font = "bold 44px sans-serif";
-    mCtx50.textAlign = "center";
-    mCtx50.textBaseline = "middle";
-    mCtx50.fillText("50", 64, 32);
-    markerTex50.update();
-  }
-  markerTex50.anisotropicFilteringLevel = maxAnisotropy;
-  const mMat50 = new StandardMaterial("mMat50", scene);
-  mMat50.diffuseTexture = markerTex50;
-
-  // Place brake marker clusters at key points along track
-  const brakeIndices = [
-    { idx: Math.floor(segments * 0.08), mat: mMat150 },
-    { idx: Math.floor(segments * 0.09), mat: mMat100 },
-    { idx: Math.floor(segments * 0.10), mat: mMat50 },
-    { idx: Math.floor(segments * 0.38), mat: mMat150 },
-    { idx: Math.floor(segments * 0.39), mat: mMat100 },
-    { idx: Math.floor(segments * 0.40), mat: mMat50 },
-    { idx: Math.floor(segments * 0.72), mat: mMat150 },
-    { idx: Math.floor(segments * 0.73), mat: mMat100 },
-    { idx: Math.floor(segments * 0.74), mat: mMat50 }
-  ];
-
-  for (const b of brakeIndices) {
-    const pos = leftBarrierPath[b.idx];
-    if (pos) {
-      const board = MeshBuilder.CreatePlane(`brakeBoard_${b.idx}`, { width: 1.4, height: 0.8 }, scene);
-      board.parent = root;
-      board.position = new Vector3(pos.x, pos.y + 0.9, pos.z);
-      board.material = b.mat;
-    }
-  }
-
-  // 9. Start / Finish Overhead Gantry Structure
-  const gantryPos = spline.getPointAt(0.005);
-  const gantryTan = spline.getTangentAt(0.005);
-  const gantrySide = Vector3.Cross(gantryTan, new Vector3(0, 1, 0)).normalize();
-
-  const gantryBar = MeshBuilder.CreateBox("gantryCrossbar", {
-    width: track.width + 5.0,
-    height: 0.8,
-    depth: 0.6
-  }, scene);
-  gantryBar.parent = root;
-  gantryBar.position = new Vector3(gantryPos.x, gantryPos.y + 5.5, gantryPos.z);
-  gantryBar.material = barrierMat;
-
-  const leftPillar = MeshBuilder.CreateCylinder("gantryLeftPillar", { diameter: 0.35, height: 6.0 }, scene);
-  leftPillar.parent = root;
-  const lGantryPt = gantryPos.add(gantrySide.scale(halfW + 2.2));
-  leftPillar.position = new Vector3(lGantryPt.x, gantryPos.y + 2.8, lGantryPt.z);
-  leftPillar.material = barrierMat;
-
-  const rightPillar = MeshBuilder.CreateCylinder("gantryRightPillar", { diameter: 0.35, height: 6.0 }, scene);
-  rightPillar.parent = root;
-  const rGantryPt = gantryPos.add(gantrySide.scale(-(halfW + 2.2)));
-  rightPillar.position = new Vector3(rGantryPt.x, gantryPos.y + 2.8, rGantryPt.z);
-  rightPillar.material = barrierMat;
-
-  // 10. Surrounding Ground Terrain (placed safely at groundFloorY below all tracks)
-  const ground = MeshBuilder.CreateGround("ground", { width: 2600, height: 2600 }, scene);
+  // =========================================================================
+  // 7. Surrounding Ground Terrain
+  // =========================================================================
+  const ground = MeshBuilder.CreateGround("ground", { width: 2800, height: 2800 }, scene);
   ground.parent = root;
   ground.position.y = groundFloorY;
   ground.receiveShadows = true;
   ground.material = groundMat;
 
-  return root;
-}
+  // =========================================================================
+  // 8. Instanced Trackside Furniture, Gantry Lights & Circuit Landmarks
+  // =========================================================================
+  const props = createTracksideProps(track, spline, scene, root, barrierOffset, {
+    propDensity: options.propDensity,
+    isNight: options.isNight,
+    isWet
+  });
 
-export function createProceduralSkybox(scene: Scene, skyColorHex: string): Mesh {
-  const skybox = MeshBuilder.CreateBox("skyBox", { size: 1200 }, scene);
-  skybox.infiniteDistance = true;
-
-  const skyMat = new StandardMaterial("skyBoxMat", scene);
-  skyMat.backFaceCulling = false;
-  skyMat.disableLighting = true;
-
-  const skyTex = new DynamicTexture("skyTex", { width: 32, height: 512 }, scene);
-  const ctx = skyTex.getContext() as CanvasRenderingContext2D;
-  if (ctx) {
-    const grad = ctx.createLinearGradient(0, 0, 0, 512);
-    const r = parseInt(skyColorHex.slice(1, 3), 16) || 140;
-    const g = parseInt(skyColorHex.slice(3, 5), 16) || 180;
-    const b = parseInt(skyColorHex.slice(5, 7), 16) || 220;
-
-    const zenith = `rgb(${Math.max(15, Math.floor(r * 0.45))},${Math.max(25, Math.floor(g * 0.55))},${Math.max(50, Math.floor(b * 0.78))})`;
-    const midSky = `rgb(${r},${g},${b})`;
-    const haze = "rgb(242, 246, 252)";
-    const groundFog = "rgb(205, 218, 230)";
-
-    grad.addColorStop(0.0, zenith);
-    grad.addColorStop(0.42, midSky);
-    grad.addColorStop(0.72, haze);
-    grad.addColorStop(0.85, "rgb(255, 252, 245)"); // Sunlit horizon
-    grad.addColorStop(1.0, groundFog);
-    ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, 32, 512);
-
-    // Subtle atmospheric cloud strata
-    ctx.fillStyle = "rgba(255, 255, 255, 0.12)";
-    ctx.fillRect(0, 180, 32, 35);
-    ctx.fillStyle = "rgba(255, 255, 255, 0.08)";
-    ctx.fillRect(0, 240, 32, 25);
-
-    skyTex.update();
-  }
-
-  skyMat.emissiveTexture = skyTex;
-  skyMat.diffuseColor = new Color3(0, 0, 0);
-  skyMat.specularColor = new Color3(0, 0, 0);
-  skybox.material = skyMat;
-
-  return skybox;
+  return { root, props };
 }

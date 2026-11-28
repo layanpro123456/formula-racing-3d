@@ -27,7 +27,7 @@ interface RacingHUDProps {
   aiCars: AICarState[];
   track: Track;
   spline?: Spline3D;
-  cameraMode: "chase" | "cockpit" | "nose";
+  cameraMode: "chase" | "tcam" | "cockpit" | "nose";
   onToggleCamera: () => void;
   onPause: () => void;
   isAudioMuted: boolean;
@@ -365,7 +365,7 @@ export function RacingHUD({
         {/* Action Buttons: Camera Switch, Engine Sound, Commentary, Fullscreen, Pause */}
         <div className="hud-actions">
           <button type="button" className="action-btn" onClick={onToggleCamera} title="Toggle Camera (C)">
-            CAM: {cameraMode.toUpperCase()}
+            CAM: {cameraMode === "tcam" ? "T-CAM" : cameraMode.toUpperCase()}
           </button>
           <button type="button" className="action-btn" onClick={onToggleAudio} title="Mute/Unmute Engine Audio (M)">
             {isAudioMuted ? "ENG: OFF" : "ENG: ON"}

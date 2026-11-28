@@ -7,6 +7,7 @@ import BabylonRacingGame from "@/components/babylon/BabylonRacingGame";
 import { LandscapeStage, useLandscapeStage } from "@/components/LandscapeStage";
 import { TouchSteerScheme } from "@/lib/input/InputManager";
 import { engineAudio } from "@/lib/audio/EngineSound";
+import type { WeatherPreset, GraphicsTier } from "@/lib/babylon/EnvironmentPreset";
 
 type GameState = "menu" | "racing";
 type SessionMode = "grandprix" | "practice" | "qualifying";
@@ -21,6 +22,10 @@ function RacingGameShell() {
   const [steeringSensitivity, setSteeringSensitivity] = useState<number>(1.0);
   const [touchControlMode, setTouchControlMode] = useState<TouchControlMode>("auto");
   const [steerScheme, setSteerScheme] = useState<TouchSteerScheme>("buttons");
+  const [weatherPreset, setWeatherPreset] = useState<WeatherPreset>("midday");
+  const [graphicsTier, setGraphicsTier] = useState<GraphicsTier>(() =>
+    isTouchDevice ? "medium" : "high"
+  );
 
   // Load saved preferences from localStorage
   React.useEffect(() => {
@@ -39,6 +44,25 @@ function RacingGameShell() {
       const savedSteerScheme = localStorage.getItem("f1_steer_scheme");
       if (savedSteerScheme === "buttons" || savedSteerScheme === "slider" || savedSteerScheme === "tilt") {
         setSteerScheme(savedSteerScheme);
+      }
+      const savedWeather = localStorage.getItem("f1_weather_preset");
+      if (
+        savedWeather === "midday" ||
+        savedWeather === "golden" ||
+        savedWeather === "overcast" ||
+        savedWeather === "wet" ||
+        savedWeather === "night"
+      ) {
+        setWeatherPreset(savedWeather);
+      }
+      const savedTier = localStorage.getItem("f1_graphics_tier");
+      if (
+        savedTier === "low" ||
+        savedTier === "medium" ||
+        savedTier === "high" ||
+        savedTier === "ultra"
+      ) {
+        setGraphicsTier(savedTier);
       }
     } catch {}
   }, []);
@@ -77,6 +101,20 @@ function RacingGameShell() {
     } catch {}
   };
 
+  const handleWeatherChange = (preset: WeatherPreset) => {
+    setWeatherPreset(preset);
+    try {
+      localStorage.setItem("f1_weather_preset", preset);
+    } catch {}
+  };
+
+  const handleGraphicsTierChange = (tier: GraphicsTier) => {
+    setGraphicsTier(tier);
+    try {
+      localStorage.setItem("f1_graphics_tier", tier);
+    } catch {}
+  };
+
   const handleLaunchRace = () => {
     engineAudio.resume();
     if (isTouchDevice) {
@@ -96,6 +134,10 @@ function RacingGameShell() {
         steerScheme={steerScheme}
         onTouchControlModeChange={handleTouchModeChange}
         onSteerSchemeChange={handleSteerSchemeChange}
+        weatherPreset={weatherPreset}
+        graphicsTier={graphicsTier}
+        onWeatherPresetChange={handleWeatherChange}
+        onGraphicsTierChange={handleGraphicsTierChange}
         onExitToMenu={() => setState("menu")}
       />
     );
@@ -177,12 +219,46 @@ function RacingGameShell() {
                 value={liveryIndex}
                 onChange={(e) => setLiveryIndex(parseInt(e.target.value, 10))}
               >
-                {LIVERIES.map((liv, idx) => (
+              {LIVERIES.map((liv, idx) => (
                   <option key={idx} value={idx}>
                     {liv.name} ({liv.team})
                   </option>
                 ))}
               </select>
+            </div>
+
+            {/* Weather & Time-of-Day Preset */}
+            <div className="form-group">
+              <label htmlFor="weather-select">WEATHER &amp; LIGHTING</label>
+              <select
+                id="weather-select"
+                className="f1-select"
+                value={weatherPreset}
+                onChange={(e) => handleWeatherChange(e.target.value as WeatherPreset)}
+              >
+                <option value="midday">CLEAR DAYLIGHT (DRY)</option>
+                <option value="golden">GOLDEN HOUR SUNSET (DRY)</option>
+                <option value="overcast">OVERCAST CLOUDY (DRY)</option>
+                <option value="wet">WET TRACK &amp; SPRAY (SSR)</option>
+                <option value="night">NIGHT FLOODLIT GRAND PRIX</option>
+              </select>
+            </div>
+
+            {/* Graphics Quality Preset */}
+            <div className="form-group">
+              <label>GRAPHICS QUALITY</label>
+              <div className="pills-group" style={{ gridTemplateColumns: "repeat(4, 1fr)" }}>
+                {(["low", "medium", "high", "ultra"] as GraphicsTier[]).map((tier) => (
+                  <button
+                    key={tier}
+                    type="button"
+                    className={`pill-btn ${graphicsTier === tier ? "active" : ""}`}
+                    onClick={() => handleGraphicsTierChange(tier)}
+                  >
+                    {tier.toUpperCase()}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
 

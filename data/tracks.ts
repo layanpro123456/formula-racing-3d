@@ -111,11 +111,13 @@ export const TRACKS: Track[] = [
       [-32, -0.2, -112],  // Ascari chicane middle
       [-12, 0.0, -108],   // Ascari exit towards Back Straight
       [10, 0.0, -95],     // Back Straight DRS zone
-      [30, 0.0, -75],     // Parabolica braking zone
-      [42, 0.2, -45],     // Curva Parabolica (Alboreto) sweeping radius
-      [38, 0.1, -15],     // Parabolica apex onto main straight
-      [18, 0.0, -4],      // Main straight acceleration
-      [0, 0, 0]
+      [26, 0.0, -72],     // Parabolica braking zone
+      [30, 0.2, -46],     // Curva Parabolica (Alboreto) entry
+      [14, 0.2, -26],     // Curva Parabolica sweeping apex
+      [-10, 0.1, -18],    // Parabolica mid-exit
+      [-24, 0.0, -8],     // Parabolica exit curve
+      [-16, 0.0, -1],     // Pit straight entry
+      [0, 0, 0]           // Start / Finish straight
     ],
     sectors: [
       { id: 1, name: "Sector 1 (Curva Grande)", tEnd: 0.34 },

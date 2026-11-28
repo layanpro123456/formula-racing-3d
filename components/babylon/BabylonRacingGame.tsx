@@ -598,6 +598,27 @@ export default function BabylonRacingGame({
       let prevT = 0;
       let lastGantryCountdown: number | null | undefined = undefined;
 
+      // Opt-in zero-allocation ?autopilot=1 demo driver (for automated lap video capture)
+      const isAutopilot =
+        typeof window !== "undefined" &&
+        new URLSearchParams(window.location.search).get("autopilot") === "1";
+      const autoPt = new Vector3();
+      const autoSide = new Vector3();
+      const autoTan1 = new Vector3();
+      const autoTan2 = new Vector3();
+      const autoTan3 = new Vector3();
+      const autoCross = new Vector3();
+      const autoUp = new Vector3(0, 1, 0);
+      const autoInputs = {
+        throttle: 0,
+        brake: 0,
+        steer: 0,
+        drs: false,
+        accelerate: false,
+        steerLeft: false,
+        steerRight: false
+      };
+
       // Render & Simulation Loop
       engine.runRenderLoop(() => {
         if (!scene || isDisposed) return;
@@ -614,7 +635,79 @@ export default function BabylonRacingGame({
           const isRaceActive = countdownRef.current === null || countdownRef.current === 0;
 
           // Unified Input Manager (Keyboard + Gamepad analog triggers and stick)
-          const inputs = inputManager.getInputs(dt, isRaceActive);
+          let inputs = inputManager.getInputs(dt, isRaceActive);
+
+          if (isAutopilot) {
+            if (!isRaceActive) {
+              autoInputs.throttle = 0;
+              autoInputs.brake = 0;
+              autoInputs.steer = 0;
+              autoInputs.drs = false;
+            } else {
+              const pCurr = physicsRef.current;
+              const tNow = Number.isFinite(pCurr.currentT) ? pCurr.currentT : 0;
+              const curSpd = Number.isFinite(pCurr.speed) ? pCurr.speed : 0;
+              const trackLen = spline.totalLength > 0 ? spline.totalLength : 3500;
+              const lookMeters = Math.max(10, Math.min(30, curSpd * 0.42));
+              const lookU = (tNow + lookMeters / trackLen) % 1;
+
+              spline.getPointAtToRef(lookU, autoPt);
+              spline.getTangentAtToRef(lookU, autoTan1);
+              Vector3.CrossToRef(autoTan1, autoUp, autoSide);
+              autoSide.normalize();
+
+              // Overtake offset if an AI rival is directly ahead
+              let latAvoid = 0;
+              if (sessionMode === "grandprix") {
+                for (let i = 0; i < aiSim.cars.length; i++) {
+                  const ai = aiSim.cars[i];
+                  let dtAhead = ai.t - tNow;
+                  if (dtAhead < -0.5) dtAhead += 1;
+                  if (dtAhead > 0.5) dtAhead -= 1;
+                  const distM = dtAhead * trackLen;
+                  if (distM > 1.5 && distM < 18 && Math.abs(ai.lateralOffset - pCurr.signedLateralDistance) < 2.2) {
+                    latAvoid = ai.lateralOffset >= 0 ? -1.8 : 1.8;
+                    break;
+                  }
+                }
+              }
+
+              const tx = autoPt.x + autoSide.x * latAvoid;
+              const tz = autoPt.z + autoSide.z * latAvoid;
+              const dx = tx - pCurr.position.x;
+              const dz = tz - pCurr.position.z;
+              const desiredHeading = Math.atan2(dx, dz);
+              let hDiff = (desiredHeading - pCurr.heading) % (Math.PI * 2);
+              if (hDiff > Math.PI) hDiff -= Math.PI * 2;
+              if (hDiff < -Math.PI) hDiff += Math.PI * 2;
+              const steerCmd = Math.max(-1, Math.min(1, hDiff * 2.5));
+
+              // Dual-horizon curvature speed profiling for clean corner braking
+              spline.getTangentAtToRef((tNow + 0.014) % 1, autoTan1);
+              spline.getTangentAtToRef((tNow + 0.042) % 1, autoTan2);
+              spline.getTangentAtToRef((tNow + 0.078) % 1, autoTan3);
+              Vector3.CrossToRef(autoTan1, autoTan2, autoCross);
+              const cNear = Math.abs(autoCross.y);
+              Vector3.CrossToRef(autoTan1, autoTan3, autoCross);
+              const cFar = Math.abs(autoCross.y);
+              const curv = Math.max(cNear, cFar * 0.78);
+
+              const targetSpd = Math.max(22, Math.min(88, 92 - curv * 95));
+              if (curSpd > targetSpd + 4.5) {
+                autoInputs.throttle = 0;
+                autoInputs.brake = Math.max(0.2, Math.min(0.85, (curSpd - targetSpd - 3.0) * 0.12));
+              } else if (curSpd > targetSpd + 1.5) {
+                autoInputs.throttle = 0.25;
+                autoInputs.brake = 0;
+              } else {
+                autoInputs.throttle = Math.max(0.65, Math.min(1.0, (targetSpd - curSpd) * 0.22 + 0.82));
+                autoInputs.brake = 0;
+              }
+              autoInputs.steer = steerCmd;
+              autoInputs.drs = pCurr.drsAvailable && Math.abs(steerCmd) < 0.2 && autoInputs.brake === 0;
+            }
+            inputs = autoInputs;
+          }
 
           // Step Physics Engine
           const tData = physicsRef.current.update(dt, inputs, track, spline);

@@ -41,11 +41,11 @@ Experience the full 3D simulation running live at 60/120 FPS directly in your br
 
 ## 📸 Visual Showcase
 
-### Gameplay Demo Video
-*In-engine 3D gameplay footage capturing the Paddock setup, 5-red-light Grand Prix start, wheel-to-wheel AI racing, physical car-to-car collisions with sparks and Race Control penalties, multi-camera views, and mobile auto-landscape touch controls.*
+### 1-Minute Monaco Grand Prix Gameplay Video
+*60-second in-engine gameplay capture at **Circuit de Monaco** (`1280×720`, 25 FPS) showcasing the 5-red-light Grand Prix start, wheel-to-wheel AI racing up Beau Rivage, camera cycling across Chase / T-Cam / Cockpit / Nose Cam past Monte Carlo's copper-domed Casino Square, and a 294 km/h 7th-gear sprint through the Louis II Tunnel with titanium skid sparks.*
 
-- **Edited Gameplay Demo (MP4)**: [public/videos/formula_racing_3d_demo.mp4](public/videos/formula_racing_3d_demo.mp4)
-- **Raw Gameplay Capture (WebM)**: [public/videos/raw_gameplay.webm](public/videos/raw_gameplay.webm)
+- **1-Min Monaco Gameplay Demo (MP4)**: [public/videos/formula_racing_3d_demo.mp4](public/videos/formula_racing_3d_demo.mp4)
+- **1-Min Monaco Raw Capture (VP9 WebM)**: [public/videos/raw_gameplay.webm](public/videos/raw_gameplay.webm)
 
 ---
 
@@ -76,17 +76,26 @@ Experience the full 3D simulation running live at 60/120 FPS directly in your br
 
 ---
 
-### In-Race Action (Low Chase Camera — Golden Hour)
-*Low dynamic chase perspective at Spa-Francorchamps in Golden Hour lighting, featuring the physical Rayleigh/Mie sky dome, sculpted ground-effect chassis, W-beam Armco barriers, alpha-tested catch fencing, 15-LED shift tachometer, live timing tower, and top-right vector minimap.*
+### In-Race Action (Monaco GP — Low Chase Camera)
+*Wheel-to-wheel Grand Prix battle on the streets of Monte Carlo at 183 km/h in 4th gear, featuring sculpted ground-effect bodywork, W-beam Armco barriers, alpha-tested catch fencing, glowing FIA rain lights, 15-LED shift tachometer, live timing tower, and vector minimap.*
 
 <p align="center">
-  <img src="public/screenshots/gameplay_chase.png" alt="In-Race Chase Camera" width="100%" style="border-radius: 8px; box-shadow: 0 10px 30px rgba(0,0,0,0.6);"/>
+  <img src="public/screenshots/gameplay_chase.png" alt="Monaco GP Wheel-to-Wheel Chase Camera" width="100%" style="border-radius: 8px; box-shadow: 0 10px 30px rgba(0,0,0,0.6);"/>
 </p>
 
 ---
 
-### Wet Track & Screen-Space Reflections (Ultra SSR)
-*Real-time Screen-Space Reflections (`SSRRenderingPipeline`), TAA, puddle clearcoat modulation, and rubbered racing grooves on wet tarmac.*
+### Monaco Louis II Tunnel (294 km/h High-Speed Run)
+*Blasting through Monaco's curved concrete tunnel under warm ceiling sodium lights at 294 km/h in 7th gear with floor titanium skid sparks flying toward the bright Port Hercule daylight exit.*
+
+<p align="center">
+  <img src="public/screenshots/monaco_tunnel.png" alt="Monaco Louis II Tunnel High Speed" width="100%" style="border-radius: 8px; box-shadow: 0 10px 30px rgba(0,0,0,0.6);"/>
+</p>
+
+---
+
+### Wet Track & Screen-Space Reflections (Spa-Francorchamps — Ultra SSR)
+*Real-time Screen-Space Reflections (`SSRRenderingPipeline`), TAA, puddle clearcoat modulation, Spa yellow-and-red Wallonia kerbs, and rubbered racing grooves on wet tarmac.*
 
 <p align="center">
   <img src="public/screenshots/wet_ssr_spa.png" alt="Wet Track SSR Reflections on Spa" width="100%" style="border-radius: 8px; box-shadow: 0 10px 30px rgba(0,0,0,0.6);"/>
@@ -94,8 +103,26 @@ Experience the full 3D simulation running live at 60/120 FPS directly in your br
 
 ---
 
-### Night Floodlit Grand Prix
-*Night circuit lighting at Suzuka with instanced trackside floodlight towers, glowing gantry signage, FIA rear rain light, and illuminated skyline landmarks.*
+### Autodromo Nazionale Monza (Royal Blue Runoffs & Podium Overhang)
+*Monza's Rettifilo start/finish straight featuring Royal Blue tarmac runoffs, red-and-white kerbs, cantilevered Podium Overhang, and Italian umbrella pines.*
+
+<p align="center">
+  <img src="public/screenshots/monza_showcase.png" alt="Monza Royal Blue Runoffs and Podium" width="100%" style="border-radius: 8px; box-shadow: 0 10px 30px rgba(0,0,0,0.6);"/>
+</p>
+
+---
+
+### Silverstone Circuit (Golden Hour)
+*Northamptonshire Golden Hour sunlight across Silverstone's Hamilton Straight with physical Rayleigh/Mie sky dome, grass runoffs, and sculpted aero bodywork.*
+
+<p align="center">
+  <img src="public/screenshots/silverstone_showcase.png" alt="Silverstone Circuit Golden Hour" width="100%" style="border-radius: 8px; box-shadow: 0 10px 30px rgba(0,0,0,0.6);"/>
+</p>
+
+---
+
+### Night Floodlit Grand Prix (Suzuka)
+*Night circuit lighting at Suzuka with instanced trackside floodlight towers, spoked Ouka Ferris wheel silhouette, Japanese cedar & sakura trees, and glowing FIA rear rain light.*
 
 <p align="center">
   <img src="public/screenshots/night_suzuka.png" alt="Night Floodlit Suzuka Grand Prix" width="100%" style="border-radius: 8px; box-shadow: 0 10px 30px rgba(0,0,0,0.6);"/>
@@ -103,8 +130,8 @@ Experience the full 3D simulation running live at 60/120 FPS directly in your br
 
 ---
 
-### Broadcast T-Cam (Roll-Hoop Onboard)
-*Signature Formula broadcast T-Cam mounted atop the airbox roll-hoop, framing the sculpted nosecone, 8 carbon suspension wishbones, multi-element front wing, and compound sidewall tires.*
+### Broadcast T-Cam (Monaco Roll-Hoop Onboard)
+*Signature Formula broadcast T-Cam mounted atop the airbox roll-hoop climbing Beau Rivage, framing the sculpted nosecone, 8 carbon suspension wishbones, multi-element front wing, and compound sidewall tires.*
 
 <p align="center">
   <img src="public/screenshots/tcam_view.png" alt="Broadcast T-Cam Onboard View" width="100%" style="border-radius: 8px; box-shadow: 0 10px 30px rgba(0,0,0,0.6);"/>
@@ -130,20 +157,20 @@ Experience the full 3D simulation running live at 60/120 FPS directly in your br
 
 ---
 
-### Cockpit & Halo Perspective
-*Driver-eye point of view looking out over the sculpted monocoque, carbon suspension arms, and front tires.*
+### Cockpit & Halo Perspective (Monaco Casino Square)
+*Driver-eye point of view braking past Monte Carlo's copper-domed Casino Square, looking out over the sculpted monocoque, carbon suspension arms, and compound-striped front tires.*
 
 <p align="center">
-  <img src="public/screenshots/cockpit_view.png" alt="Cockpit & Halo View" width="100%" style="border-radius: 8px; box-shadow: 0 10px 30px rgba(0,0,0,0.6);"/>
+  <img src="public/screenshots/cockpit_view.png" alt="Cockpit & Halo View at Monaco Casino Square" width="100%" style="border-radius: 8px; box-shadow: 0 10px 30px rgba(0,0,0,0.6);"/>
 </p>
 
 ---
 
-### Track-Level Nose Cam
-*Ultra-low bumper camera angle delivering a high-speed rush across the banked starting grid and through technical corner complexes.*
+### Track-Level Nose Cam (Monaco)
+*Ultra-low bumper camera angle delivering a high-speed rush along Monaco's tight street barriers and catch fencing.*
 
 <p align="center">
-  <img src="public/screenshots/nose_cam.png" alt="Nose Camera View" width="100%" style="border-radius: 8px; box-shadow: 0 10px 30px rgba(0,0,0,0.6);"/>
+  <img src="public/screenshots/nose_cam.png" alt="Nose Camera View at Monaco" width="100%" style="border-radius: 8px; box-shadow: 0 10px 30px rgba(0,0,0,0.6);"/>
 </p>
 
 ---
@@ -353,8 +380,9 @@ formula-racing-3d/
 │   ├── audio/
 │   │   └── EngineSound.ts       # Synthesized Web Audio API sound & impact engine
 │   ├── babylon/
+│   │   ├── CircuitLandmarks.ts    # Per-circuit landmarks, bridges, tunnel, harbor & flora
 │   │   ├── EnvironmentPreset.ts   # Weather/lighting presets, GPU tiers & physical sky shader
-│   │   ├── TrackPropsGenerator.ts # ThinInstance pit garages, stands, gantry LEDs & landmarks
+│   │   ├── TrackPropsGenerator.ts # ThinInstance pit garages, stands & gantry LEDs
 │   │   ├── VehicleMaterials.ts    # Twill carbon weave, tire grain, contact AO & PBR liveries
 │   │   └── havokLoader.ts         # Havok WASM physics plugin loader
 │   ├── commentary/
@@ -385,17 +413,20 @@ formula-racing-3d/
 │       ├── promotional_poster.jpg          # 1920x1080 landscape showcase poster
 │       ├── promotional_poster_portrait.jpg # 1200x1500 portrait showcase poster
 │       ├── social_preview.jpg   # 1200x675 OpenGraph banner
-│       ├── gameplay_chase.png   # Low chase action view (Golden Hour)
-│       ├── wet_ssr_spa.png      # Wet track Screen-Space Reflections on Spa
-│       ├── night_suzuka.png     # Night floodlit Grand Prix at Suzuka
-│       ├── tcam_view.png        # Broadcast T-Cam roll-hoop onboard view
-│       ├── menu.png             # Paddock garage circuit, weather & quality setup
-│       ├── pause_menu.png       # Mid-race pause, sensitivity & graphics calibration
-│       ├── cockpit_view.png     # Cockpit & Halo driver view
-│       └── nose_cam.png         # Front nose bumper camera
-│   └── videos/                  # Gameplay demo and raw capture videos
-│       ├── formula_racing_3d_demo.mp4      # Edited gameplay demo video
-│       └── raw_gameplay.webm               # Raw gameplay capture
+│       ├── gameplay_chase.png     # Monaco GP wheel-to-wheel chase camera
+│       ├── monaco_tunnel.png      # Monaco Louis II Tunnel high-speed sprint
+│       ├── wet_ssr_spa.png        # Wet track Screen-Space Reflections on Spa
+│       ├── monza_showcase.png     # Monza Royal Blue runoffs & Podium Overhang
+│       ├── silverstone_showcase.png # Silverstone Golden Hour showcase
+│       ├── night_suzuka.png       # Night floodlit Grand Prix at Suzuka
+│       ├── tcam_view.png          # Broadcast T-Cam roll-hoop onboard view
+│       ├── menu.png               # Paddock garage circuit, weather & quality setup
+│       ├── pause_menu.png         # Mid-race pause, sensitivity & graphics calibration
+│       ├── cockpit_view.png       # Cockpit & Halo view at Monaco Casino Square
+│       └── nose_cam.png           # Front nose bumper camera at Monaco
+│   └── videos/                    # 1-minute Monaco Grand Prix gameplay captures
+│       ├── formula_racing_3d_demo.mp4 # 60s Monaco Grand Prix demo (MP4)
+│       └── raw_gameplay.webm          # 60s Monaco Grand Prix capture (VP9 WebM)
 ├── ARCHITECTURE.md              # Graphics & simulation mathematical architecture
 ├── CONTRIBUTING.md              # Engineering guidelines & invariant standards
 ├── ROADMAP.md                   # Future milestones & development roadmap

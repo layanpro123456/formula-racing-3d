@@ -539,6 +539,17 @@ export default function BabylonRacingGame({
       const startTan = spline.getTangentAt(0);
       const startHeading = Math.atan2(startTan.x, startTan.z);
 
+      // Initialize camera cleanly behind the car along -startTan on frame 1
+      camera.position.set(
+        startPt.x - Math.sin(startHeading) * 5.2,
+        startPt.y + 1.85,
+        startPt.z - Math.cos(startHeading) * 5.2
+      );
+      const camTargetInitX = startPt.x + Math.sin(startHeading) * 1.5;
+      const camTargetInitY = startPt.y + 0.95;
+      const camTargetInitZ = startPt.z + Math.cos(startHeading) * 1.5;
+      camera.setTarget(new Vector3(camTargetInitX, camTargetInitY, camTargetInitZ));
+
       physicsRef.current.steeringSensitivity = steeringSensitivityRef.current;
       physicsRef.current.reset(
         startPt,
@@ -583,7 +594,7 @@ export default function BabylonRacingGame({
       // Pre-allocated scratch vectors for zero-allocation render loop
       const camDesired = new Vector3();
       const camTarget = new Vector3();
-      const camTargetCurrent = new Vector3(startPt.x, startPt.y + 1.2, startPt.z);
+      const camTargetCurrent = new Vector3(camTargetInitX, camTargetInitY, camTargetInitZ);
       let prevT = 0;
       let lastGantryCountdown: number | null | undefined = undefined;
 

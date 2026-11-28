@@ -14,6 +14,7 @@ import {
 } from "@babylonjs/core";
 import { Track } from "@/data/tracks";
 import { Spline3D } from "@/lib/math/Spline3D";
+import { buildCircuitLandmarks } from "@/lib/babylon/CircuitLandmarks";
 
 export interface TrackPropsHandle {
   updateStartLights: (countdown: number | null) => void;
@@ -181,15 +182,26 @@ export function createTracksideProps(
   // 3. Pit Wall, Pit Garages & Grandstands along Pit Straight
   // =========================================================================
   const pitStraightUs = [0.94, 0.965, 0.99, 0.015];
-  const pitBuildingMaster = MeshBuilder.CreateBox("pitBuildingMaster", { width: 8.5, height: 5.2, depth: 16.0 }, scene);
-  pitBuildingMaster.parent = root;
-  pitBuildingMaster.material = concreteMat;
-  pitBuildingMaster.receiveShadows = true;
+  const hasCustomPitWing = track.id === "silverstone";
+  const hasCustomMainStand = track.id === "silverstone" || track.id === "suzuka";
 
-  const grandstandMaster = MeshBuilder.CreateBox("grandstandMaster", { width: 9.0, height: 6.5, depth: 20.0 }, scene);
-  grandstandMaster.parent = root;
-  grandstandMaster.material = standRoofMat;
-  grandstandMaster.receiveShadows = true;
+  const pitBuildingMaster = hasCustomPitWing
+    ? null
+    : MeshBuilder.CreateBox("pitBuildingMaster", { width: 8.5, height: 5.2, depth: 16.0 }, scene);
+  if (pitBuildingMaster) {
+    pitBuildingMaster.parent = root;
+    pitBuildingMaster.material = concreteMat;
+    pitBuildingMaster.receiveShadows = true;
+  }
+
+  const grandstandMaster = hasCustomMainStand
+    ? null
+    : MeshBuilder.CreateBox("grandstandMaster", { width: 9.0, height: 6.5, depth: 20.0 }, scene);
+  if (grandstandMaster) {
+    grandstandMaster.parent = root;
+    grandstandMaster.material = standRoofMat;
+    grandstandMaster.receiveShadows = true;
+  }
 
   for (const u of pitStraightUs) {
     spline.getPointAtToRef(u, pt);
@@ -198,15 +210,17 @@ export function createTracksideProps(
     side.normalize();
     const yaw = Math.atan2(tan.x, tan.z);
 
-    // Pit building on left side
-    const pitPos = pt.add(side.scale(barrierOffset + 7.5));
-    pitPos.y += 2.4;
-    pitBuildingMaster.thinInstanceAdd(makeTransformMatrix(pitPos, yaw));
+    if (pitBuildingMaster) {
+      const pitPos = pt.add(side.scale(barrierOffset + 7.5));
+      pitPos.y += 2.4;
+      pitBuildingMaster.thinInstanceAdd(makeTransformMatrix(pitPos, yaw));
+    }
 
-    // Main grandstand on right side
-    const standPos = pt.add(side.scale(-(barrierOffset + 9.0)));
-    standPos.y += 3.0;
-    grandstandMaster.thinInstanceAdd(makeTransformMatrix(standPos, yaw));
+    if (grandstandMaster) {
+      const standPos = pt.add(side.scale(-(barrierOffset + 9.0)));
+      standPos.y += 3.0;
+      grandstandMaster.thinInstanceAdd(makeTransformMatrix(standPos, yaw));
+    }
   }
 
   // Race Control Timing Tower near start line
@@ -383,126 +397,18 @@ export function createTracksideProps(
   }
 
   // =========================================================================
-  // 6. Circuit-Specific Biome Foliage & Landmarks (ThinInstance)
+  // 6. Circuit-Specific Landmarks, Bridges, Gravel Traps & Regional Flora
   // =========================================================================
-  if (track.id === "monaco") {
-    // Mediterranean Harbor Water Plane & Hillside Apartments
-    const waterMesh = MeshBuilder.CreateGround("monacoHarborWater", { width: 900, height: 900 }, scene);
-    waterMesh.parent = root;
-    waterMesh.position.set(160, -2.5, 220);
-    const waterMat = new PBRMaterial("monacoWaterMat", scene);
-    waterMat.albedoColor = isNight ? new Color3(0.03, 0.08, 0.15) : new Color3(0.05, 0.24, 0.36);
-    waterMat.metallic = 0.22;
-    waterMat.roughness = isWet ? 0.08 : 0.14;
-    waterMat.clearCoat.isEnabled = true;
-    waterMat.clearCoat.intensity = 0.9;
-    waterMat.clearCoat.roughness = 0.06;
-    waterMesh.material = waterMat;
-
-    const bldgMat = new PBRMaterial("monacoBldgMat", scene);
-    bldgMat.albedoColor = new Color3(0.76, 0.72, 0.66);
-    bldgMat.roughness = 0.82;
-    bldgMat.metallic = 0.05;
-    const bldgMaster = MeshBuilder.CreateBox("monacoBldgMaster", { width: 14, height: 22, depth: 14 }, scene);
-    bldgMaster.parent = root;
-    bldgMaster.material = bldgMat;
-
-    const bCount = Math.floor(32 * density);
-    const minBldgClearSq = (barrierOffset + 14.5) * (barrierOffset + 14.5);
-    const checkBldgPt = new Vector3();
-    for (let i = 0; i < bCount; i++) {
-      const u = (i / bCount) % 1;
-      spline.getPointAtToRef(u, pt);
-      spline.getTangentAtToRef(u, tan);
-      Vector3.CrossToRef(tan, up, side);
-      side.normalize();
-      const bPos = pt.add(side.scale(-(barrierOffset + 19 + (i % 3) * 14)));
-
-      // Prevent buildings from intersecting adjacent track loops (e.g. pit straight / hairpin)
-      let tooClose = false;
-      for (let s = 0; s < spline.samples.length; s += 16) {
-        checkBldgPt.copyFrom(spline.samples[s].point);
-        const dx = bPos.x - checkBldgPt.x;
-        const dz = bPos.z - checkBldgPt.z;
-        if (dx * dx + dz * dz < minBldgClearSq) {
-          tooClose = true;
-          break;
-        }
-      }
-      if (tooClose) continue;
-
-      const hScale = 0.6 + ((i * 37) % 10) * 0.14;
-      bPos.y += 11 * hScale - 2.0;
-      bldgMaster.thinInstanceAdd(makeTransformMatrix(bPos, Math.atan2(tan.x, tan.z), 1, hScale, 1));
-    }
-  } else {
-    // Procedural Instanced Foliage (Conifer & Parkland Trees outside barriers)
-    const trunkMat = new PBRMaterial("treeTrunkMat", scene);
-    trunkMat.albedoColor = new Color3(0.24, 0.16, 0.11);
-    trunkMat.roughness = 0.95;
-
-    const canopyMat = new PBRMaterial("treeCanopyMat", scene);
-    canopyMat.albedoColor = track.id === "spa" ? new Color3(0.09, 0.20, 0.11) : new Color3(0.14, 0.28, 0.13);
-    canopyMat.roughness = 0.88;
-    canopyMat.metallic = 0.0;
-
-    const trunkMaster = MeshBuilder.CreateCylinder("treeTrunkMaster", { diameter: 0.55, height: 3.4, tessellation: 6 }, scene);
-    trunkMaster.parent = root;
-    trunkMaster.material = trunkMat;
-
-    const canopyMaster = MeshBuilder.CreateCylinder(
-      "treeCanopyMaster",
-      { diameterTop: 0.2, diameterBottom: 4.8, height: 8.5, tessellation: 7 },
-      scene
-    );
-    canopyMaster.parent = root;
-    canopyMaster.material = canopyMat;
-
-    const treeCount = Math.floor((track.id === "spa" ? 110 : 75) * density);
-    const minTrackClearSq = (barrierOffset + 10.5) * (barrierOffset + 10.5);
-    const checkPt = new Vector3();
-
-    for (let i = 0; i < treeCount; i++) {
-      const u = (i / treeCount + 0.007 * (i % 5)) % 1;
-      spline.getPointAtToRef(u, pt);
-      spline.getTangentAtToRef(u, tan);
-      Vector3.CrossToRef(tan, up, side);
-      side.normalize();
-      const sgn = i % 2 === 0 ? 1 : -1;
-      const distOut = barrierOffset + 15.0 + ((i * 17) % 24);
-      const tPos = pt.add(side.scale(sgn * distOut));
-
-      // Verify tree isn't colliding with another segment of a figure-8 / hairpin track
-      let tooClose = false;
-      for (let s = 0; s < spline.samples.length; s += 20) {
-        checkPt.copyFrom(spline.samples[s].point);
-        const dx = tPos.x - checkPt.x;
-        const dz = tPos.z - checkPt.z;
-        if (dx * dx + dz * dz < minTrackClearSq) {
-          tooClose = true;
-          break;
-        }
-      }
-      if (tooClose) continue;
-
-      const scale = 0.75 + ((i * 29) % 10) * 0.07;
-      const trunkPos = new Vector3(tPos.x, pt.y + 1.5 * scale - 1.5, tPos.z);
-      const canopyPos = new Vector3(tPos.x, pt.y + 6.5 * scale - 1.5, tPos.z);
-      trunkMaster.thinInstanceAdd(makeTransformMatrix(trunkPos, i * 0.5, scale, scale, scale));
-      canopyMaster.thinInstanceAdd(makeTransformMatrix(canopyPos, i * 0.5, scale, scale, scale));
-    }
-
-    // Suzuka Iconic Skyline Ferris Wheel (oriented upright vertically)
-    if (track.id === "suzuka") {
-      const wheelPos = spline.getPointAt(0.25);
-      const wheel = MeshBuilder.CreateTorus("suzukaFerrisWheel", { diameter: 48, thickness: 1.8, tessellation: 28 }, scene);
-      wheel.parent = root;
-      wheel.position.set(wheelPos.x - 105, wheelPos.y + 30, wheelPos.z + 70);
-      wheel.rotation.x = Math.PI / 2;
-      wheel.rotation.z = Math.PI / 5;
-      wheel.material = standRoofMat;
-    }
-  }
+  buildCircuitLandmarks(track, spline, scene, root, {
+    density,
+    isNight,
+    isWet,
+    barrierOffset,
+    maxAnisotropy,
+    concreteMat,
+    darkMetalMat,
+    standRoofMat
+  });
 
   return {
     updateStartLights: (countdown: number | null) => {

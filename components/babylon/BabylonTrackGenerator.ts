@@ -379,12 +379,15 @@ export function createBabylonTrack(
   rightKerbMesh.parent = root;
   rightKerbMesh.receiveShadows = true;
 
+  const kerbColorA = track.id === "spa" ? "#dc2626" : "#b91c1c";
+  const kerbColorB = track.id === "spa" ? "#facc15" : "#d8dee6";
+
   const kerbTex = new DynamicTexture("kerbTex", { width: 256, height: 128 }, scene);
   const kCtx = kerbTex.getContext() as CanvasRenderingContext2D;
   if (kCtx) {
     const stripeW = 32;
     for (let i = 0; i < 8; i++) {
-      kCtx.fillStyle = i % 2 === 0 ? "#b91c1c" : "#d8dee6";
+      kCtx.fillStyle = i % 2 === 0 ? kerbColorA : kerbColorB;
       kCtx.fillRect(i * stripeW, 0, stripeW, 128);
       // Subtle tire scuffing & joint shadows on kerb ribs
       kCtx.fillStyle = "rgba(15, 18, 22, 0.24)";
@@ -433,14 +436,26 @@ export function createBabylonTrack(
   const runoffTex = new DynamicTexture("runoffTex", { width: 256, height: 256 }, scene);
   const roCtx = runoffTex.getContext() as CanvasRenderingContext2D;
   if (roCtx) {
-    roCtx.fillStyle = track.id === "monaco" ? "#2d333b" : "#183320";
+    const runoffBase =
+      track.id === "monaco"
+        ? "#2d333b"
+        : track.id === "monza"
+          ? "#1c3f73"
+          : track.id === "silverstone"
+            ? "#1c3d22"
+            : "#16301d";
+    roCtx.fillStyle = runoffBase;
     roCtx.fillRect(0, 0, 256, 256);
     for (let i = 0; i < 6000; i++) {
       const x = Math.random() * 256;
       const y = Math.random() * 256;
-      roCtx.fillStyle = track.id === "monaco"
-        ? `rgba(75, 82, 92, ${0.15 + Math.random() * 0.2})`
-        : `rgba(34, 72, 42, ${0.2 + Math.random() * 0.25})`;
+      if (track.id === "monaco") {
+        roCtx.fillStyle = `rgba(75, 82, 92, ${0.15 + Math.random() * 0.2})`;
+      } else if (track.id === "monza") {
+        roCtx.fillStyle = `rgba(45, 92, 160, ${0.16 + Math.random() * 0.2})`;
+      } else {
+        roCtx.fillStyle = `rgba(34, 72, 42, ${0.2 + Math.random() * 0.25})`;
+      }
       roCtx.fillRect(x, y, 2, 2);
     }
     runoffTex.update();
@@ -597,13 +612,48 @@ export function createBabylonTrack(
   rightFence.material = fenceMat;
 
   // =========================================================================
-  // 7. Surrounding Ground Terrain
+  // 7. Surrounding Ground Terrain & Perimeter Horizon Ridge
   // =========================================================================
-  const ground = MeshBuilder.CreateGround("ground", { width: 2800, height: 2800 }, scene);
+  const ground = MeshBuilder.CreateGround("ground", { width: 3000, height: 3000 }, scene);
   ground.parent = root;
   ground.position.y = groundFloorY;
   ground.receiveShadows = true;
   ground.material = groundMat;
+
+  // Procedural undulating horizon ridge so elevated tracks blend into distant hills
+  const ridgeBasePath: Vector3[] = [];
+  const ridgePeakPath: Vector3[] = [];
+  const ridgeSteps = 72;
+  const isMountainous = track.id === "spa" || track.id === "monaco";
+  const baseAmp = isMountainous ? 58 : 26;
+  for (let i = 0; i < ridgeSteps; i++) {
+    const theta = (i / ridgeSteps) * Math.PI * 2;
+    const cosT = Math.cos(theta);
+    const sinT = Math.sin(theta);
+    const hVar =
+      baseAmp +
+      Math.sin(theta * 3.0 + 0.6) * (baseAmp * 0.45) +
+      Math.cos(theta * 7.0 - 1.1) * (baseAmp * 0.25);
+    ridgeBasePath.push(new Vector3(cosT * 1240, groundFloorY - 2.0, sinT * 1240));
+    ridgePeakPath.push(new Vector3(cosT * 1440, groundFloorY + hVar, sinT * 1440));
+  }
+
+  const horizonRidge = MeshBuilder.CreateRibbon(
+    "horizonRidge",
+    {
+      pathArray: [ridgeBasePath, ridgePeakPath],
+      closeArray: false,
+      closePath: true,
+      sideOrientation: Mesh.DOUBLESIDE
+    },
+    scene
+  );
+  horizonRidge.parent = root;
+  const ridgeMat = new PBRMaterial("horizonRidgeMat", scene);
+  ridgeMat.albedoColor = Color3.FromHexString(track.groundColor).scale(0.82);
+  ridgeMat.roughness = 0.98;
+  ridgeMat.metallic = 0.0;
+  horizonRidge.material = ridgeMat;
 
   // =========================================================================
   // 8. Instanced Trackside Furniture, Gantry Lights & Circuit Landmarks

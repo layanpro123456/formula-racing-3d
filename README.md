@@ -76,8 +76,8 @@ Experience the full 3D simulation running live at 60/120 FPS directly in your br
 
 ---
 
-### In-Race Action (Low Chase Camera)
-*Low dynamic chase perspective featuring real-time directional shadows, procedural atmospheric sky, 15-LED shift tachometer, live timing tower, and the top-right vector minimap.*
+### In-Race Action (Low Chase Camera — Golden Hour)
+*Low dynamic chase perspective at Spa-Francorchamps in Golden Hour lighting, featuring the physical Rayleigh/Mie sky dome, sculpted ground-effect chassis, W-beam Armco barriers, alpha-tested catch fencing, 15-LED shift tachometer, live timing tower, and top-right vector minimap.*
 
 <p align="center">
   <img src="public/screenshots/gameplay_chase.png" alt="In-Race Chase Camera" width="100%" style="border-radius: 8px; box-shadow: 0 10px 30px rgba(0,0,0,0.6);"/>
@@ -85,8 +85,35 @@ Experience the full 3D simulation running live at 60/120 FPS directly in your br
 
 ---
 
+### Wet Track & Screen-Space Reflections (Ultra SSR)
+*Real-time Screen-Space Reflections (`SSRRenderingPipeline`), TAA, puddle clearcoat modulation, and rubbered racing grooves on wet tarmac.*
+
+<p align="center">
+  <img src="public/screenshots/wet_ssr_spa.png" alt="Wet Track SSR Reflections on Spa" width="100%" style="border-radius: 8px; box-shadow: 0 10px 30px rgba(0,0,0,0.6);"/>
+</p>
+
+---
+
+### Night Floodlit Grand Prix
+*Night circuit lighting at Suzuka with instanced trackside floodlight towers, glowing gantry signage, FIA rear rain light, and illuminated skyline landmarks.*
+
+<p align="center">
+  <img src="public/screenshots/night_suzuka.png" alt="Night Floodlit Suzuka Grand Prix" width="100%" style="border-radius: 8px; box-shadow: 0 10px 30px rgba(0,0,0,0.6);"/>
+</p>
+
+---
+
+### Broadcast T-Cam (Roll-Hoop Onboard)
+*Signature Formula broadcast T-Cam mounted atop the airbox roll-hoop, framing the sculpted nosecone, 8 carbon suspension wishbones, multi-element front wing, and compound sidewall tires.*
+
+<p align="center">
+  <img src="public/screenshots/tcam_view.png" alt="Broadcast T-Cam Onboard View" width="100%" style="border-radius: 8px; box-shadow: 0 10px 30px rgba(0,0,0,0.6);"/>
+</p>
+
+---
+
 ### Paddock Garage & Circuit Selection Menu
-*Interactive paddock setup interface for selecting circuits, session formats (Grand Prix, Qualifying, Practice), team liveries, and calibrating **Steering Sensitivity** ($50\% - 150\%$) with quick presets.*
+*Interactive paddock setup interface for selecting circuits, session formats (Grand Prix, Qualifying, Practice), team liveries, **Weather & Lighting** presets, **Graphics Quality** tiers (`LOW`–`ULTRA`), and calibrating **Steering Sensitivity** ($50\% - 150\%$).*
 
 <p align="center">
   <img src="public/screenshots/menu.png" alt="Paddock Circuit & Setup Menu" width="100%" style="border-radius: 8px; box-shadow: 0 10px 30px rgba(0,0,0,0.6);"/>
@@ -94,8 +121,8 @@ Experience the full 3D simulation running live at 60/120 FPS directly in your br
 
 ---
 
-### In-Game Pause & Sensitivity Calibration Screen
-*Seamless mid-race pause overlay accessible via `ESC` / `P` to fine-tune steering responsiveness on the fly without forfeiting race progress or reloading the 3D scene.*
+### In-Game Pause, Graphics & Sensitivity Calibration Screen
+*Seamless mid-race pause overlay accessible via `ESC` / `P` to adjust steering sensitivity, touch controls, graphics quality tier, and weather lighting presets.*
 
 <p align="center">
   <img src="public/screenshots/pause_menu.png" alt="In-Game Pause Menu" width="100%" style="border-radius: 8px; box-shadow: 0 10px 30px rgba(0,0,0,0.6);"/>
@@ -104,7 +131,7 @@ Experience the full 3D simulation running live at 60/120 FPS directly in your br
 ---
 
 ### Cockpit & Halo Perspective
-*Driver-eye point of view looking out over the titanium Halo safety structure, cockpit monocoque, rotating steering yoke, and front suspension assemblies.*
+*Driver-eye point of view looking out over the sculpted monocoque, carbon suspension arms, and front tires.*
 
 <p align="center">
   <img src="public/screenshots/cockpit_view.png" alt="Cockpit & Halo View" width="100%" style="border-radius: 8px; box-shadow: 0 10px 30px rgba(0,0,0,0.6);"/>
@@ -113,7 +140,7 @@ Experience the full 3D simulation running live at 60/120 FPS directly in your br
 ---
 
 ### Track-Level Nose Cam
-*Ultra-low bumper camera angle delivering a high-speed rush down long straights and through technical corner complexes.*
+*Ultra-low bumper camera angle delivering a high-speed rush across the banked starting grid and through technical corner complexes.*
 
 <p align="center">
   <img src="public/screenshots/nose_cam.png" alt="Nose Camera View" width="100%" style="border-radius: 8px; box-shadow: 0 10px 30px rgba(0,0,0,0.6);"/>
@@ -200,15 +227,13 @@ Six accurately modeled championship circuits with true 3D elevation gradients an
 
 ---
 
-### 🌟 AAA Graphics Pipeline, IBL Environment & Shaders
-- **Image-Based Lighting (IBL) & Environment Reflections**: Prefiltered spherical harmonics `.env` environment texture (`environmentSpecular.env`) driving real-time Cook-Torrance microfacet specular reflections across all car clearcoats, alloy wheels, and trackside metals.
-- **Cascaded Shadow Generator (CSM 2048)**: 3-tier cascaded shadow mapping with contact hardening (`useContactHardeningShadow`), producing razor-sharp tire contact shadows directly under the chassis and natural diffuse penumbras along distant kerbs.
-- **Screen-Space Ambient Occlusion (SSAO2)**: Depth buffer ambient occlusion providing realistic ground contact shading for tires, suspension wishbones, and Armco barriers, completely eliminating the "floating car" look.
-- **PBR Asphalt Normal Bump Mapping**: High-frequency procedural tangent-space normal bump maps (`bumpTexture`) simulating aggregate stone micro-facets, paired with low-roughness rubbered racing grooves and a clearcoat layer for authentic specular asphalt sheen.
-- **Automotive Clearcoat & Pirelli-Style Sidewalls**: Multi-layer high-gloss car lacquer (`clearCoat: 1.0`, `roughness: 0.03`), carbon fiber floor undertray, glowing carbon-ceramic brake rotors, and colored tire compound sidewall rings.
-- **Cockpit LCD Telemetry Screen**: Active digital LCD instrument cluster mounted directly on the steering wheel yoke with progressive shift LEDs and telemetry readouts.
-- **Cinematic Post-Processing Pipeline**: Babylon.js Default Rendering Pipeline featuring ACES photographic tonemapping, bloom highlights, subtle vignette, FXAA edge smoothing, edge sharpening, speed lens chromatic aberration, filmic grain, and velocity-dependent motion blur (scaling to `0.65` at top speed).
-- **Dynamic Particle VFX**: High-velocity titanium floor skid sparks and barrier collision sparks emitted along the asphalt plane, plus procedural tire smoke plumes during threshold brake lockups.
+### 🌟 Broadcast-Grade Graphics Pipeline, Weather & Shaders
+- **Physical Sky Dome & 5 Weather Presets**: Custom GLSL Rayleigh/Mie atmospheric scattering dome paired with selectable **Clear Daylight**, **Golden Hour**, **Overcast**, **Wet Track (SSR)**, and **Night Floodlit** presets.
+- **Screen-Space Reflections (SSR) & Temporal AA (TAA)**: `SSRRenderingPipeline` and `TAARenderingPipeline` on `ULTRA` / wet desktop tiers for crisp reflections across wet tarmac puddles and automotive clearcoats.
+- **Image-Based Lighting (IBL) & Cascaded Shadows (CSM 2048)**: Prefiltered `.env` environment reflections plus 3–4 cascade `CascadedShadowGenerator` contact-hardening shadows and soft floor contact AO beneath every car.
+- **Multi-Layer PBR Tarmac & Instanced Trackside World**: Sobel height-field asphalt normal maps, roughness-mapped rubbered racing grooves, single-occurrence banked start/finish grid, W-beam Armco barriers, alpha-tested catch fencing, and `ThinInstance` trackside grandstands, pit garages, floodlights, and circuit landmarks.
+- **Sculpted Ground-Effect Vehicle & Live Cockpit**: `ExtrudeShapeCustom` tapered monocoque & undercut sidepods, 2×2 twill carbon weave, 8 suspension wishbones, iridescent titanium exhaust, glowing carbon-ceramic brakes, 4-wheel suspension travel, and live steering wheel LCD telemetry.
+- **Dynamic VFX & Calibrated HDR Post-Processing**: ACES photographic tonemapping, threshold-calibrated bloom, SSAO2, velocity-based motion blur, 4-wheel lockup smoke, ring-buffer tire skidmarks, wet rooster-tail rain spray, and titanium sparks.
 
 ---
 
@@ -328,12 +353,17 @@ formula-racing-3d/
 │   ├── audio/
 │   │   └── EngineSound.ts       # Synthesized Web Audio API sound & impact engine
 │   ├── babylon/
-│   │   └── havokLoader.ts       # Havok WASM physics plugin loader
+│   │   ├── EnvironmentPreset.ts   # Weather/lighting presets, GPU tiers & physical sky shader
+│   │   ├── TrackPropsGenerator.ts # ThinInstance pit garages, stands, gantry LEDs & landmarks
+│   │   ├── VehicleMaterials.ts    # Twill carbon weave, tire grain, contact AO & PBR liveries
+│   │   └── havokLoader.ts         # Havok WASM physics plugin loader
 │   ├── commentary/
 │   │   └── RaceCommentary.ts    # Web Speech API race commentary announcer
 │   ├── effects/
 │   │   ├── BarrierSparkSystem.ts # Particle spark system on collisions
-│   │   └── TireSmokeSystem.ts    # Particle tire smoke on lockups
+│   │   ├── RainSpraySystem.ts    # Wet-track rooster-tail wake spray particles
+│   │   ├── SkidmarkSystem.ts     # Zero-allocation ring-buffer tire skidmarks
+│   │   └── TireSmokeSystem.ts    # 4-wheel lockup & slip tire smoke particles
 │   ├── input/
 │   │   └── InputManager.ts      # Keyboard, gamepad, touch & gyro inputs
 │   ├── math/
@@ -355,9 +385,12 @@ formula-racing-3d/
 │       ├── promotional_poster.jpg          # 1920x1080 landscape showcase poster
 │       ├── promotional_poster_portrait.jpg # 1200x1500 portrait showcase poster
 │       ├── social_preview.jpg   # 1200x675 OpenGraph banner
-│       ├── gameplay_chase.png   # Low chase action view with minimap
-│       ├── menu.png             # Paddock garage circuit & sensitivity setup
-│       ├── pause_menu.png       # Mid-race pause & live sensitivity slider
+│       ├── gameplay_chase.png   # Low chase action view (Golden Hour)
+│       ├── wet_ssr_spa.png      # Wet track Screen-Space Reflections on Spa
+│       ├── night_suzuka.png     # Night floodlit Grand Prix at Suzuka
+│       ├── tcam_view.png        # Broadcast T-Cam roll-hoop onboard view
+│       ├── menu.png             # Paddock garage circuit, weather & quality setup
+│       ├── pause_menu.png       # Mid-race pause, sensitivity & graphics calibration
 │       ├── cockpit_view.png     # Cockpit & Halo driver view
 │       └── nose_cam.png         # Front nose bumper camera
 │   └── videos/                  # Gameplay demo and raw capture videos

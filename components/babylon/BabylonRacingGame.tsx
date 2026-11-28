@@ -779,8 +779,8 @@ export default function BabylonRacingGame({
             targetFov = 1.24 + (safeSpeedMs / 110) * 0.12;
           } else if (currentCamMode === "cockpit") {
             // Driver Eye Cockpit view framing curved Halo pillar & rotating steering wheel LCD
-            const eyeDist = 0.06;
-            const eyeHeight = 0.72;
+            const eyeDist = 0.16;
+            const eyeHeight = 0.74;
             camDesired.set(
               px + Math.sin(heading) * eyeDist + joltX * 0.45,
               py + eyeHeight + joltY * 0.45,
@@ -788,7 +788,7 @@ export default function BabylonRacingGame({
             );
             camTarget.set(
               px + Math.sin(heading) * 20,
-              py + eyeHeight - 1.15,
+              py + eyeHeight - 0.85,
               pz + Math.cos(heading) * 20
             );
             camera.position.copyFrom(camDesired);

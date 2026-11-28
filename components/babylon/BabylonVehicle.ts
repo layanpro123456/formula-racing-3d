@@ -333,7 +333,7 @@ export class BabylonVehicle {
     // =========================================================================
     this.steerWheel = MeshBuilder.CreateBox(`${name}_cockpitWheel`, { width: 0.26, height: 0.145, depth: 0.036 }, scene);
     this.steerWheel.parent = this.root;
-    this.steerWheel.position.set(0, 0.52, 0.54);
+    this.steerWheel.position.set(0, 0.59, 0.56);
     this.steerWheel.rotation.x = -Math.PI / 7;
     this.steerWheel.material = this.carbonMat;
 
@@ -513,14 +513,13 @@ export class BabylonVehicle {
       nut.parent = wheelMesh;
       nut.material = this.accentMat;
 
-      // Tire Compound Sidewall Stripe
+      // Tire Compound Sidewall Stripe (torus lies in XZ plane around wheelMesh's Y axle)
       const sidewallRing = MeshBuilder.CreateTorus(
         `${wheelName}_sidewall`,
         { diameter: this.wheelRadius * 1.56, thickness: 0.014, tessellation: 24 },
         scene
       );
       sidewallRing.parent = wheelMesh;
-      sidewallRing.rotation.x = Math.PI / 2;
       sidewallRing.position.y = sideSign * (wheelWidth * 0.48);
       sidewallRing.material = mats.sidewallMat;
 

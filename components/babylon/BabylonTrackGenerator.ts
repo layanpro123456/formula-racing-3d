@@ -166,7 +166,7 @@ export function createBabylonTrack(
     ctx.fillStyle = isWet ? "#16181c" : "#22252b";
     ctx.fillRect(0, 0, 1024, 1024);
 
-    // Multi-scale aggregate speckles (seamless across V)
+    // Multi-scale aggregate speckles (seamless along U=track length and V=track width)
     for (let i = 0; i < 65000; i++) {
       const x = Math.random() * 1024;
       const y = Math.random() * 1024;
@@ -177,30 +177,27 @@ export function createBabylonTrack(
       ctx.fillRect(x, y, sz, sz);
     }
 
-    // Rubbered-in racing grooves (subtle dark tire tracks, clean center crown)
-    const grad = ctx.createLinearGradient(0, 0, 1024, 0);
+    // Rubbered-in racing grooves along V (across road width: left=0 -> right=1024)
+    const grad = ctx.createLinearGradient(0, 0, 0, 1024);
     grad.addColorStop(0.0, "rgba(12, 13, 16, 0.25)");
     grad.addColorStop(0.10, "rgba(28, 30, 35, 0.08)");
-    grad.addColorStop(0.30, "rgba(7, 8, 10, 0.52)");
+    grad.addColorStop(0.30, "rgba(7, 8, 10, 0.55)");
     grad.addColorStop(0.46, "rgba(24, 26, 30, 0.10)");
     grad.addColorStop(0.54, "rgba(24, 26, 30, 0.10)");
-    grad.addColorStop(0.70, "rgba(7, 8, 10, 0.52)");
+    grad.addColorStop(0.70, "rgba(7, 8, 10, 0.55)");
     grad.addColorStop(0.90, "rgba(28, 30, 35, 0.08)");
     grad.addColorStop(1.0, "rgba(12, 13, 16, 0.25)");
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, 1024, 1024);
 
-    // Subtle longitudinal seam lines & weathered track edge lines (off-white so no bloom blowout)
-    ctx.fillStyle = "rgba(14, 16, 20, 0.35)";
-    ctx.fillRect(510, 0, 4, 1024);
-
+    // Weathered track boundary lines along top/bottom V edges (off-white, no bloom blowout)
     ctx.fillStyle = "#cfd6df";
-    ctx.fillRect(18, 0, 20, 1024);
-    ctx.fillRect(986, 0, 20, 1024);
+    ctx.fillRect(0, 16, 1024, 18);
+    ctx.fillRect(0, 990, 1024, 18);
 
     asphaltTexture.update();
-    asphaltTexture.uScale = 1;
-    asphaltTexture.vScale = 96;
+    asphaltTexture.uScale = 96;
+    asphaltTexture.vScale = 1;
   }
   asphaltTexture.anisotropicFilteringLevel = maxAnisotropy;
 
@@ -238,16 +235,16 @@ export function createBabylonTrack(
     }
     nCtx.putImageData(imgData, 0, 0);
     asphaltNormalTexture.update();
-    asphaltNormalTexture.uScale = 6;
-    asphaltNormalTexture.vScale = 180;
+    asphaltNormalTexture.uScale = 180;
+    asphaltNormalTexture.vScale = 6;
   }
   asphaltNormalTexture.anisotropicFilteringLevel = maxAnisotropy;
 
-  // Roughness map (G channel = roughness, B channel = metallic): rubbered grooves are smoother than shoulders
+  // Roughness map (G channel = roughness, B channel = metallic): rubbered grooves along V
   const asphaltRoughTex = new DynamicTexture("asphaltRoughness", { width: 256, height: 256 }, scene);
   const rCtx = asphaltRoughTex.getContext() as CanvasRenderingContext2D;
   if (rCtx) {
-    const rGrad = rCtx.createLinearGradient(0, 0, 256, 0);
+    const rGrad = rCtx.createLinearGradient(0, 0, 0, 256);
     const grooveRough = isWet ? 38 : 132;
     const midRough = isWet ? 85 : 196;
     const edgeRough = isWet ? 128 : 228;
@@ -259,8 +256,8 @@ export function createBabylonTrack(
     rCtx.fillStyle = rGrad;
     rCtx.fillRect(0, 0, 256, 256);
     asphaltRoughTex.update();
-    asphaltRoughTex.uScale = 1;
-    asphaltRoughTex.vScale = 24;
+    asphaltRoughTex.uScale = 24;
+    asphaltRoughTex.vScale = 1;
   }
 
   const roadMaterial = new PBRMaterial("pbrRoad", scene);
@@ -285,6 +282,7 @@ export function createBabylonTrack(
 
   // =========================================================================
   // 1b. Dedicated Single Start/Finish Line & Starting Grid Boxes Decal Ribbon
+  // (CreateRibbon: U = along track length, V = across road width)
   // =========================================================================
   const gridLeft: Vector3[] = [];
   const gridRight: Vector3[] = [];
@@ -297,8 +295,8 @@ export function createBabylonTrack(
     spline.getTangentAtToRef(u, tangent);
     Vector3.CrossToRef(tangent, up, side);
     side.normalize();
-    gridLeft.push(pt.add(side.scale(halfW - 0.18)).add(new Vector3(0, 0.036, 0)));
-    gridRight.push(pt.add(side.scale(-(halfW - 0.18))).add(new Vector3(0, 0.036, 0)));
+    gridLeft.push(pt.add(side.scale(halfW - 0.25)).add(new Vector3(0, 0.036, 0)));
+    gridRight.push(pt.add(side.scale(-(halfW - 0.25))).add(new Vector3(0, 0.036, 0)));
   }
 
   const startGridMesh = MeshBuilder.CreateRibbon(
@@ -309,37 +307,37 @@ export function createBabylonTrack(
   startGridMesh.parent = root;
   startGridMesh.receiveShadows = true;
 
-  const gridTex = new DynamicTexture("startGridTex", { width: 512, height: 1024 }, scene, false);
+  const gridTex = new DynamicTexture("startGridTex", { width: 1024, height: 512 }, scene, false);
   gridTex.hasAlpha = true;
   const gDecalCtx = gridTex.getContext() as CanvasRenderingContext2D;
   if (gDecalCtx) {
-    gDecalCtx.clearRect(0, 0, 512, 1024);
+    gDecalCtx.clearRect(0, 0, 1024, 512);
 
-    // Checkered Start/Finish Line near u=0 (approx 70% along this ribbon)
-    const sfY = 720;
+    // Checkered Start/Finish Line across V (Y=0..512) at U ≈ 0.70 (X ≈ 720)
+    const sfX = 720;
     const sq = 16;
-    for (let row = 0; row < 3; row++) {
-      for (let col = 0; col < 512 / sq; col++) {
-        gDecalCtx.fillStyle = (row + col) % 2 === 0 ? "rgba(232,236,242,0.9)" : "rgba(15,18,24,0.88)";
-        gDecalCtx.fillRect(col * sq, sfY + row * sq, sq, sq);
+    for (let col = 0; col < 3; col++) {
+      for (let row = 0; row < 512 / sq; row++) {
+        gDecalCtx.fillStyle = (row + col) % 2 === 0 ? "rgba(224,230,238,0.88)" : "rgba(15,18,24,0.88)";
+        gDecalCtx.fillRect(sfX + col * sq, row * sq, sq, sq);
       }
     }
     // Red FIA Timing Line stripe
     gDecalCtx.fillStyle = "rgba(215, 25, 25, 0.9)";
-    gDecalCtx.fillRect(0, sfY - 8, 512, 6);
+    gDecalCtx.fillRect(sfX - 8, 0, 6, 512);
 
-    // Staggered Starting Grid Boxes (6 slots behind start line)
-    gDecalCtx.strokeStyle = "rgba(235, 240, 246, 0.78)";
+    // Staggered Starting Grid Boxes behind start line (towards smaller X)
+    gDecalCtx.strokeStyle = "rgba(225, 232, 240, 0.76)";
     gDecalCtx.lineWidth = 6;
     for (let slot = 0; slot < 6; slot++) {
       const isLeft = slot % 2 === 0;
-      const boxX = isLeft ? 105 : 315;
-      const boxY = sfY - 90 - slot * 95;
+      const boxY = isLeft ? 105 : 315;
+      const boxX = sfX - 95 - slot * 95;
       gDecalCtx.beginPath();
-      gDecalCtx.moveTo(boxX, boxY + 34);
-      gDecalCtx.lineTo(boxX, boxY);
-      gDecalCtx.lineTo(boxX + 92, boxY);
-      gDecalCtx.lineTo(boxX + 92, boxY + 34);
+      gDecalCtx.moveTo(boxX - 28, boxY);
+      gDecalCtx.lineTo(boxX + 10, boxY);
+      gDecalCtx.lineTo(boxX + 10, boxY + 92);
+      gDecalCtx.lineTo(boxX - 28, boxY + 92);
       gDecalCtx.stroke();
     }
     gridTex.update();
@@ -393,8 +391,8 @@ export function createBabylonTrack(
     kCtx.fillRect(0, 0, 256, 128);
 
     kerbTex.update();
-    kerbTex.uScale = 1;
-    kerbTex.vScale = 90;
+    kerbTex.uScale = 120;
+    kerbTex.vScale = 1;
   }
   kerbTex.anisotropicFilteringLevel = maxAnisotropy;
 
@@ -573,6 +571,7 @@ export function createBabylonTrack(
   fenceMat.alphaCutOff = 0.35;
   fenceMat.backFaceCulling = false;
   fenceMat.specularColor = new Color3(0.2, 0.2, 0.2);
+  fenceMat.emissiveColor = new Color3(0.08, 0.09, 0.11);
 
   const leftFence = MeshBuilder.CreateRibbon(
     "leftFence",

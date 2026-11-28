@@ -408,13 +408,29 @@ export function createTracksideProps(
     bldgMaster.material = bldgMat;
 
     const bCount = Math.floor(32 * density);
+    const minBldgClearSq = (barrierOffset + 14.5) * (barrierOffset + 14.5);
+    const checkBldgPt = new Vector3();
     for (let i = 0; i < bCount; i++) {
       const u = (i / bCount) % 1;
       spline.getPointAtToRef(u, pt);
       spline.getTangentAtToRef(u, tan);
       Vector3.CrossToRef(tan, up, side);
       side.normalize();
-      const bPos = pt.add(side.scale(-(barrierOffset + 18 + (i % 3) * 14)));
+      const bPos = pt.add(side.scale(-(barrierOffset + 19 + (i % 3) * 14)));
+
+      // Prevent buildings from intersecting adjacent track loops (e.g. pit straight / hairpin)
+      let tooClose = false;
+      for (let s = 0; s < spline.samples.length; s += 16) {
+        checkBldgPt.copyFrom(spline.samples[s].point);
+        const dx = bPos.x - checkBldgPt.x;
+        const dz = bPos.z - checkBldgPt.z;
+        if (dx * dx + dz * dz < minBldgClearSq) {
+          tooClose = true;
+          break;
+        }
+      }
+      if (tooClose) continue;
+
       const hScale = 0.6 + ((i * 37) % 10) * 0.14;
       bPos.y += 11 * hScale - 2.0;
       bldgMaster.thinInstanceAdd(makeTransformMatrix(bPos, Math.atan2(tan.x, tan.z), 1, hScale, 1));
@@ -476,13 +492,14 @@ export function createTracksideProps(
       canopyMaster.thinInstanceAdd(makeTransformMatrix(canopyPos, i * 0.5, scale, scale, scale));
     }
 
-    // Suzuka Iconic Skyline Ferris Wheel
+    // Suzuka Iconic Skyline Ferris Wheel (oriented upright vertically)
     if (track.id === "suzuka") {
       const wheelPos = spline.getPointAt(0.25);
       const wheel = MeshBuilder.CreateTorus("suzukaFerrisWheel", { diameter: 48, thickness: 1.8, tessellation: 28 }, scene);
       wheel.parent = root;
-      wheel.position.set(wheelPos.x - 95, wheelPos.y + 28, wheelPos.z + 65);
-      wheel.rotation.y = Math.PI / 5;
+      wheel.position.set(wheelPos.x - 105, wheelPos.y + 30, wheelPos.z + 70);
+      wheel.rotation.x = Math.PI / 2;
+      wheel.rotation.z = Math.PI / 5;
       wheel.material = standRoofMat;
     }
   }

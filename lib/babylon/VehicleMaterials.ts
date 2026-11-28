@@ -156,25 +156,18 @@ export function createVehicleMaterials(
     bCtx.fillStyle = grad;
     bCtx.fillRect(0, 0, 512, 512);
 
-    // Secondary racing stripes & accent pinstripes
+    // Clean metallic racing stripes & pinstripes (avoids UV text distortion on curved extruded monocoque)
     bCtx.fillStyle = livery.secondary;
-    bCtx.fillRect(0, 0, 512, 86);
-    bCtx.fillRect(0, 426, 512, 86);
+    bCtx.fillRect(0, 0, 512, 92);
+    bCtx.fillRect(0, 420, 512, 92);
 
     bCtx.fillStyle = livery.accent;
-    bCtx.fillRect(0, 86, 512, 14);
-    bCtx.fillRect(0, 412, 512, 14);
+    bCtx.fillRect(0, 92, 512, 16);
+    bCtx.fillRect(0, 404, 512, 16);
 
-    // Fictional sponsor wordmark + car number
-    bCtx.fillStyle = "rgba(248, 250, 252, 0.9)";
-    bCtx.font = "900 38px sans-serif";
-    bCtx.textAlign = "center";
-    bCtx.textBaseline = "middle";
-    bCtx.fillText(livery.name.toUpperCase(), 256, 200);
-
-    bCtx.fillStyle = livery.accent;
-    bCtx.font = "900 72px sans-serif";
-    bCtx.fillText(`${carNumber}`, 256, 305);
+    // Subtle carbon-tone spine stripe
+    bCtx.fillStyle = "rgba(15, 18, 24, 0.35)";
+    bCtx.fillRect(0, 244, 512, 24);
 
     bodyTex.update();
   }

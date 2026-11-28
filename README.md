@@ -50,7 +50,7 @@ Experience the full 3D simulation running live at 60/120 FPS directly in your br
 ---
 
 ### Official Simulator Promotional Poster (16:9 Landscape)
-*High-resolution landscape showcase pairing the twilight open-wheel scene with the live Ardennes Forest Catmull-Rom spline and deterministic simulation architecture specs.*
+*1920×1080 landscape showcase pairing the twilight open-wheel scene with the Ardennes Forest Catmull-Rom spline (`Spline3D.ts`), 2D OBB SAT collision solver, and high-visibility simulator feature breakdown.*
 
 <p align="center">
   <img src="public/screenshots/promotional_poster.jpg" alt="Formula Racing 3D Promotional Poster Landscape" width="100%" style="border-radius: 8px; box-shadow: 0 10px 30px rgba(0,0,0,0.6);"/>
@@ -58,11 +58,20 @@ Experience the full 3D simulation running live at 60/120 FPS directly in your br
 
 ---
 
-### Official Box-Art & LinkedIn Poster (4:5 Portrait Edition)
-*Vertical 4:5 presentation format (`1200x1500` / `2400x3000` LinkedIn PNG) designed for social feeds, mobile showcases, and technical architecture highlights.*
+### Official LinkedIn & Portrait Showcase Poster (4:5 Portrait)
+*High-DPI `2400×3000` PNG ([1200×1500 JPEG edition](public/screenshots/promotional_poster_portrait.jpg)) built for LinkedIn feeds and mobile showcases, featuring clear feed-scale feature callouts (`0 B/frame` render loop, Pacejka slip, 6 banked circuits, 5 AI rivals, IBL + CSM 2048, and Web APIs audio/haptics).*
 
 <p align="center">
-  <img src="public/screenshots/promotional_poster_portrait.jpg" alt="Formula Racing 3D Promotional Poster Portrait" width="70%" style="max-width: 650px; border-radius: 8px; box-shadow: 0 10px 30px rgba(0,0,0,0.6);"/>
+  <img src="public/screenshots/linkedin_poster.png" alt="Formula Racing 3D LinkedIn & Portrait Poster" width="70%" style="max-width: 650px; border-radius: 8px; box-shadow: 0 10px 30px rgba(0,0,0,0.6);"/>
+</p>
+
+---
+
+### Social & OpenGraph Preview Banner (1200×675)
+*Clean 16:9 OpenGraph and Twitter/LinkedIn link-preview card ([`public/social_preview.jpg`](public/social_preview.jpg)) highlighting core telemetry specs at thumbnail scale.*
+
+<p align="center">
+  <img src="public/screenshots/social_preview.jpg" alt="Formula Racing 3D Social & OpenGraph Preview Banner" width="100%" style="border-radius: 8px; box-shadow: 0 10px 30px rgba(0,0,0,0.6);"/>
 </p>
 
 ---

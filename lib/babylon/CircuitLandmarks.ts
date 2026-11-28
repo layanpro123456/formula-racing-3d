@@ -435,33 +435,37 @@ function buildMonzaSurroundings(
   const tan = new Vector3();
   const side = new Vector3();
 
-  // Historic 1955 Sopraelevata Banked Concrete Oval sweeping behind Parabolica & main straight
+  // Historic 1955 Sopraelevata Banked Concrete Oval sweeping outside Parabolica (u: 0.85 -> 0.955)
   const bankIn: Vector3[] = [];
   const bankOut: Vector3[] = [];
-  for (let i = 0; i <= 36; i++) {
-    const u = (0.86 + (i / 36) * 0.14) % 1;
+  for (let i = 0; i <= 28; i++) {
+    const u = 0.85 + (i / 28) * 0.105;
     spline.getPointAtToRef(u, pt);
     spline.getTangentAtToRef(u, tan);
     Vector3.CrossToRef(tan, UP, side);
     side.normalize();
-    const pIn = pt.add(side.scale(ctx.barrierOffset + 11.5));
-    const pOut = pt.add(side.scale(ctx.barrierOffset + 27.0));
+    // On Monza (CCW), -side points outward away from the circuit loop
+    const pIn = pt.add(side.scale(-(ctx.barrierOffset + 12.0)));
+    const pOut = pt.add(side.scale(-(ctx.barrierOffset + 27.5)));
+    if (!isClearOfTrack(spline, pIn, (ctx.barrierOffset + 6.0) * (ctx.barrierOffset + 6.0))) continue;
     pIn.y += 0.5;
     pOut.y += 11.5; // Dramatic historic high banking
     bankIn.push(pIn);
     bankOut.push(pOut);
   }
-  const sopraelevata = MeshBuilder.CreateRibbon(
-    "monzaSopraelevata",
-    { pathArray: [bankIn, bankOut], closeArray: false, closePath: false, sideOrientation: Mesh.DOUBLESIDE },
-    scene
-  );
-  sopraelevata.parent = root;
-  const oldConcreteMat = new PBRMaterial("monzaOldConcreteMat", scene);
-  oldConcreteMat.albedoColor = new Color3(0.36, 0.37, 0.34);
-  oldConcreteMat.roughness = 0.94;
-  oldConcreteMat.metallic = 0.02;
-  sopraelevata.material = oldConcreteMat;
+  if (bankIn.length >= 2) {
+    const sopraelevata = MeshBuilder.CreateRibbon(
+      "monzaSopraelevata",
+      { pathArray: [bankIn, bankOut], closeArray: false, closePath: false, sideOrientation: Mesh.DOUBLESIDE },
+      scene
+    );
+    sopraelevata.parent = root;
+    const oldConcreteMat = new PBRMaterial("monzaOldConcreteMat", scene);
+    oldConcreteMat.albedoColor = new Color3(0.36, 0.37, 0.34);
+    oldConcreteMat.roughness = 0.94;
+    oldConcreteMat.metallic = 0.02;
+    sopraelevata.material = oldConcreteMat;
+  }
 
   // Serraglio Historic Brick Overpass Bridge (u ≈ 0.554) & Curva Grande Bridge (u ≈ 0.16)
   const brickMat = new PBRMaterial("monzaBrickMat", scene);
@@ -498,27 +502,27 @@ function buildMonzaSurroundings(
     ctx.maxAnisotropy
   );
 
-  // Cantilevered Podium Overhang at Pit Straight (u ≈ 0.002)
-  const podPos = spline.getPointAt(0.002);
-  const podTan = spline.getTangentAt(0.002);
+  // Cantilevered Podium Overhang at Pit Straight (u ≈ 0.006, pit side)
+  const podPos = spline.getPointAt(0.006);
+  const podTan = spline.getTangentAt(0.006);
   const podSide = Vector3.Cross(podTan, UP).normalize();
-  const podium = MeshBuilder.CreateCylinder("monzaPodiumOverhang", { diameter: 9.5, height: 0.75, tessellation: 18 }, scene);
+  const podium = MeshBuilder.CreateCylinder("monzaPodiumOverhang", { diameter: 7.5, height: 0.75, tessellation: 18 }, scene);
   podium.parent = root;
-  const podCenter = podPos.add(podSide.scale(ctx.barrierOffset + 2.8));
-  podium.position.set(podCenter.x, podPos.y + 4.8, podCenter.z);
+  const podCenter = podPos.add(podSide.scale(ctx.barrierOffset + 4.8));
+  podium.position.set(podCenter.x, podPos.y + 5.2, podCenter.z);
   const redTrimMat = new PBRMaterial("monzaRedTrimMat", scene);
   redTrimMat.albedoColor = new Color3(0.75, 0.10, 0.12);
   redTrimMat.roughness = 0.45;
   podium.material = redTrimMat;
 
-  // Gravel Traps at Prima Variante & Curva Parabolica
+  // Gravel Traps on true outer corners of Prima Variante & Curva Parabolica (-side on Monza)
   const gravelMat = createGravelMaterial(scene, ctx.isWet);
-  createGravelTrapRibbon("monzaRettifiloGravel", scene, root, spline, 0.075, 0.11, 1, halfW, 0.95, 3.0, gravelMat);
-  createGravelTrapRibbon("monzaParabolicaGravel", scene, root, spline, 0.85, 0.925, 1, halfW, 0.95, 3.0, gravelMat);
+  createGravelTrapRibbon("monzaRettifiloGravel", scene, root, spline, 0.075, 0.11, -1, halfW, 0.95, 3.0, gravelMat);
+  createGravelTrapRibbon("monzaParabolicaGravel", scene, root, spline, 0.85, 0.925, -1, halfW, 0.95, 3.0, gravelMat);
 
   // Prima Variante & Parabolica Grandstands
-  createCoveredGrandstand("monzaRettifiloStand", scene, root, spline, 0.088, 1, ctx.barrierOffset + 7.5, 24, redTrimMat, ctx.standRoofMat, ctx.darkMetalMat);
-  createCoveredGrandstand("monzaParabolicaStand", scene, root, spline, 0.89, 1, ctx.barrierOffset + 7.5, 24, redTrimMat, ctx.standRoofMat, ctx.darkMetalMat);
+  createCoveredGrandstand("monzaRettifiloStand", scene, root, spline, 0.088, -1, ctx.barrierOffset + 7.5, 24, redTrimMat, ctx.standRoofMat, ctx.darkMetalMat);
+  createCoveredGrandstand("monzaParabolicaStand", scene, root, spline, 0.89, -1, ctx.barrierOffset + 7.5, 24, redTrimMat, ctx.standRoofMat, ctx.darkMetalMat);
 
   // Towering Italian Umbrella Pines (Pini Domestici)
   const trunkMat = new PBRMaterial("monzaPineTrunkMat", scene);

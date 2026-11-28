@@ -9,6 +9,7 @@ import {
   PBRMaterial,
   DynamicTexture,
   StandardMaterial,
+  Texture,
   Mesh,
   TransformNode
 } from "@babylonjs/core";
@@ -34,7 +35,7 @@ export function createBabylonTrack(
   options: TrackGenerationOptions = {}
 ): TrackGenerationResult {
   const root = new TransformNode("trackRoot", scene);
-  const maxAnisotropy = Math.min(8, scene.getEngine().getCaps().maxAnisotropy || 1);
+  const maxAnisotropy = Math.max(1, scene.getEngine().getCaps().maxAnisotropy || 1);
   const wetness = Math.max(0, Math.min(1, options.wetness ?? 0));
   const isWet = wetness > 0.35;
 
@@ -196,9 +197,11 @@ export function createBabylonTrack(
     ctx.fillRect(0, 990, 1024, 18);
 
     asphaltTexture.update();
-    asphaltTexture.uScale = 96;
+    asphaltTexture.uScale = 240;
     asphaltTexture.vScale = 1;
   }
+  asphaltTexture.wrapU = Texture.WRAP_ADDRESSMODE;
+  asphaltTexture.wrapV = Texture.WRAP_ADDRESSMODE;
   asphaltTexture.anisotropicFilteringLevel = maxAnisotropy;
 
   // Coupled Height-Field Normal Map (Sobel filtered) + Roughness Texture
@@ -235,9 +238,11 @@ export function createBabylonTrack(
     }
     nCtx.putImageData(imgData, 0, 0);
     asphaltNormalTexture.update();
-    asphaltNormalTexture.uScale = 180;
+    asphaltNormalTexture.uScale = 320;
     asphaltNormalTexture.vScale = 6;
   }
+  asphaltNormalTexture.wrapU = Texture.WRAP_ADDRESSMODE;
+  asphaltNormalTexture.wrapV = Texture.WRAP_ADDRESSMODE;
   asphaltNormalTexture.anisotropicFilteringLevel = maxAnisotropy;
 
   // Roughness map (G channel = roughness, B channel = metallic): rubbered grooves along V
@@ -256,9 +261,12 @@ export function createBabylonTrack(
     rCtx.fillStyle = rGrad;
     rCtx.fillRect(0, 0, 256, 256);
     asphaltRoughTex.update();
-    asphaltRoughTex.uScale = 24;
+    asphaltRoughTex.uScale = 48;
     asphaltRoughTex.vScale = 1;
   }
+  asphaltRoughTex.wrapU = Texture.WRAP_ADDRESSMODE;
+  asphaltRoughTex.wrapV = Texture.WRAP_ADDRESSMODE;
+  asphaltRoughTex.anisotropicFilteringLevel = maxAnisotropy;
 
   const roadMaterial = new PBRMaterial("pbrRoad", scene);
   roadMaterial.albedoTexture = asphaltTexture;

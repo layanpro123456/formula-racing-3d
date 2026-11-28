@@ -66,21 +66,31 @@ export class TireSmokeSystem {
     const safeSpeed = Number.isFinite(speedMs) ? speedMs : 0;
 
     if (this.systems.length === 4) {
-      // Front wheels: smoke specifically on braking lockup (inside wheel smokes most)
+      const absSteer = Math.abs(steerAngle);
+      const isHardCorner = absSteer > 0.14 && safeSpeed > 24;
+      const isHardBrake = isBraking && safeSpeed > 20;
+
+      // Front wheels: smoke on braking lockup or subtle scrub during hard high-speed turn-in
       let flRate = 0;
       let frRate = 0;
       if (isLockup && safeSpeed > 10) {
         const lockRate = Math.round(48 * this.density);
         flRate = steerAngle <= 0.08 ? lockRate : Math.round(lockRate * 0.25);
         frRate = steerAngle >= -0.08 ? lockRate : Math.round(lockRate * 0.25);
+      } else if (isHardCorner) {
+        const cornerRate = Math.round(Math.min(18, (absSteer - 0.14) * 55) * this.density);
+        flRate = steerAngle < 0 ? cornerRate : Math.round(cornerRate * 0.35);
+        frRate = steerAngle > 0 ? cornerRate : Math.round(cornerRate * 0.35);
       }
 
-      // Rear wheels: smoke only on strong lateral slip / wheelspin
+      // Rear wheels: subtle haze during cornering/hard braking, denser smoke on slip/lockup
       let rearRate = 0;
-      if (safeSlip > 0.24 && safeSpeed > 8) {
-        rearRate = Math.min(65, Math.floor((safeSlip - 0.12) * 140 * this.density));
+      if (safeSlip > 0.18 && safeSpeed > 8) {
+        rearRate = Math.min(65, Math.floor((safeSlip - 0.10) * 140 * this.density));
       } else if (isLockup && safeSpeed > 14) {
         rearRate = Math.round(18 * this.density);
+      } else if (isHardCorner || isHardBrake) {
+        rearRate = Math.round(14 * this.density);
       }
 
       this.systems[0].emitRate = flRate;

@@ -89,8 +89,10 @@ export class SkidmarkSystem {
     this.mat.useAlphaFromDiffuseTexture = true;
     this.mat.transparencyMode = StandardMaterial.MATERIAL_ALPHABLEND;
     this.mat.backFaceCulling = false;
+    this.mat.disableDepthWrite = true;
     this.mat.specularColor = new Color3(0.05, 0.05, 0.05);
     this.mat.zOffset = -3;
+    this.mat.zOffsetUnits = -3;
     this.mesh.material = this.mat;
   }
 
@@ -102,11 +104,16 @@ export class SkidmarkSystem {
     speedMs: number,
     isLockup: boolean,
     tireSlip: number,
-    steerAngle: number
+    steerAngle: number,
+    isBraking = false,
+    slopeFwdY = 0,
+    slopeRightY = 0
   ): void {
     const safeSpeed = Number.isFinite(speedMs) ? speedMs : 0;
-    const isSliding = Number.isFinite(tireSlip) && tireSlip > 0.22;
-    const active = safeSpeed > 8 && (isLockup || isSliding);
+    const isSliding = Number.isFinite(tireSlip) && tireSlip > 0.16;
+    const isHardCorner = Math.abs(steerAngle) > 0.14 && safeSpeed > 24;
+    const isHardBrake = isBraking && safeSpeed > 20;
+    const active = safeSpeed > 8 && (isLockup || isSliding || isHardCorner || isHardBrake);
 
     const sinH = Math.sin(heading);
     const cosH = Math.cos(heading);
@@ -114,14 +121,14 @@ export class SkidmarkSystem {
     const rightZ = -sinH;
 
     for (let w = 0; w < 4; w++) {
-      // Front wheels lock on lockup; rear wheels mark on slip/drift
+      // Front wheels mark on lockup or aggressive turn-in; rear wheels mark on slip, cornering, or hard braking
       const isFront = w < 2;
       let wheelActive = false;
       if (active) {
-        if (isFront && isLockup) {
-          // Inside wheel locks harder when turning
+        if (isFront && (isLockup || isHardCorner)) {
+          // Inside wheel locks/scrubs harder when turning
           wheelActive = Math.abs(steerAngle) < 0.08 || (steerAngle < 0 && w === 0) || (steerAngle > 0 && w === 1);
-        } else if (!isFront && isSliding) {
+        } else if (!isFront && (isSliding || isHardCorner || isHardBrake)) {
           wheelActive = true;
         }
       }
@@ -134,7 +141,7 @@ export class SkidmarkSystem {
       const lx = this.wheelOffsetsX[w];
       const lz = this.wheelOffsetsZ[w];
       const wx = posX + rightX * lx + sinH * lz;
-      const wy = posY + 0.038;
+      const wy = posY + 0.008 + slopeRightY * lx + slopeFwdY * lz;
       const wz = posZ + rightZ * lx + cosH * lz;
 
       if (this.hasLast[w] === 0) {

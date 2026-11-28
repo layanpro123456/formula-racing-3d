@@ -12,6 +12,13 @@ export interface SplineSample {
   normal: Vector3;
 }
 
+export interface RoadSurfaceSample {
+  roadY: number;
+  normal: Vector3;
+  tangent: Vector3;
+  bankedSide: Vector3;
+}
+
 const UP = new Vector3(0, 1, 0);
 
 export class Spline3D {
@@ -21,6 +28,15 @@ export class Spline3D {
   private arcLengths: number[] = [];
   private n: number;
   private readonly sampleCount = 1500;
+
+  // Pre-allocated scratch vectors for zero-allocation surface sampling
+  private _surfPt = new Vector3();
+  private _surfTan = new Vector3();
+  private _surfNextTan = new Vector3();
+  private _surfCross = new Vector3();
+  private _surfSide = new Vector3();
+  private _surfBankAxis = new Vector3();
+  private _surfBankedSide = new Vector3();
 
   constructor(points: [number, number, number][], scale = 4.8) {
     // Strip duplicate closure point if provided
@@ -314,6 +330,95 @@ export class Spline3D {
 
   public getLength(): number {
     return this.totalLength;
+  }
+
+  /**
+   * Samples the exact rendered road surface height (including banking + kerb bevels)
+   * and surface normal at normalized spline parameter `u` and `signedLateral` offset.
+   * Zero heap allocations.
+   */
+  public sampleRoadSurface(
+    u: number,
+    signedLateral: number,
+    trackWidth: number,
+    out: RoadSurfaceSample
+  ): RoadSurfaceSample {
+    const safeU = ((u % 1) + 1) % 1;
+    const nextU = (safeU + 0.005) % 1.0;
+
+    this.getPointAtToRef(safeU, this._surfPt);
+    this.getTangentAtToRef(safeU, this._surfTan);
+    this.getTangentAtToRef(nextU, this._surfNextTan);
+
+    Vector3.CrossToRef(this._surfTan, this._surfNextTan, this._surfCross);
+    const bankingAngle = Math.max(-0.10, Math.min(0.10, this._surfCross.y * 18.0));
+
+    Vector3.CrossToRef(this._surfTan, UP, this._surfSide);
+    if (this._surfSide.lengthSquared() > 1e-6) {
+      this._surfSide.normalize();
+    } else {
+      this._surfSide.set(-1, 0, 0);
+    }
+
+    // bankAxis = normalize(UP - side * bankingAngle)
+    this._surfBankAxis.set(
+      UP.x - this._surfSide.x * bankingAngle,
+      UP.y - this._surfSide.y * bankingAngle,
+      UP.z - this._surfSide.z * bankingAngle
+    );
+    this._surfBankAxis.normalize();
+
+    // bankedSide = normalize(tangent × bankAxis)
+    Vector3.CrossToRef(this._surfTan, this._surfBankAxis, this._surfBankedSide);
+    if (this._surfBankedSide.lengthSquared() > 1e-6) {
+      this._surfBankedSide.normalize();
+    } else {
+      this._surfBankedSide.copyFrom(this._surfSide);
+    }
+
+    // Exact surface normal = normalize(bankedSide × tangent)
+    Vector3.CrossToRef(this._surfBankedSide, this._surfTan, out.normal);
+    if (out.normal.lengthSquared() > 1e-6) {
+      out.normal.normalize();
+    } else {
+      out.normal.set(0, 1, 0);
+    }
+    out.tangent.copyFrom(this._surfTan);
+    out.bankedSide.copyFrom(this._surfBankedSide);
+
+    // Match BabylonTrackGenerator road / kerb / runoff elevation profile
+    const safeWidth = Number.isFinite(trackWidth) && trackWidth > 0 ? trackWidth : 6.8;
+    const halfW = safeWidth * 0.5;
+    const kerbW = 0.95;
+    const runoffW = 3.0;
+    const maxLat = halfW + kerbW + runoffW;
+    const clampedLat = Math.max(-maxLat, Math.min(maxLat, Number.isFinite(signedLateral) ? signedLateral : 0));
+    const absLat = Math.abs(clampedLat);
+
+    // Convert horizontal lateral distance into distance along bankedSide
+    const horizProj = Math.max(
+      0.5,
+      this._surfSide.x * this._surfBankedSide.x + this._surfSide.z * this._surfBankedSide.z
+    );
+    const bankLift = this._surfBankedSide.y * (clampedLat / horizProj);
+
+    let surfaceOffsetY = 0.03;
+    if (absLat > halfW && absLat <= halfW + kerbW) {
+      const kerbT = (absLat - halfW) / kerbW;
+      if (kerbT <= 0.55) {
+        const f = kerbT / 0.55;
+        surfaceOffsetY = 0.034 + (0.078 - 0.034) * f;
+      } else {
+        const f = (kerbT - 0.55) / 0.45;
+        surfaceOffsetY = 0.078 + (0.048 - 0.078) * f;
+      }
+    } else if (absLat > halfW + kerbW) {
+      const roT = Math.min(1, (absLat - halfW - kerbW) / runoffW);
+      surfaceOffsetY = 0.04 + (0.025 - 0.04) * roT;
+    }
+
+    out.roadY = this._surfPt.y + bankLift + surfaceOffsetY;
+    return out;
   }
 }
 

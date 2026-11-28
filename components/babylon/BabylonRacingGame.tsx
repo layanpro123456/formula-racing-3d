@@ -518,10 +518,10 @@ export default function BabylonRacingGame({
         }
       }
 
-      // Dynamic VFX Systems (4-wheel Smoke, Skidmarks, Sparks, Wet Rain Spray)
+      // Dynamic VFX Systems (4-wheel Contact-Patch Smoke, Skidmarks, Sparks, Wet Rain Spray)
       tireSmokeSystem = new TireSmokeSystem(
         scene,
-        [vehicle.wheelFL, vehicle.wheelFR, vehicle.wheelRL, vehicle.wheelRR],
+        vehicle.contactPatchNodes,
         gfxConfig.particleDensity
       );
       barrierSparkSystem = new BarrierSparkSystem(scene, vehicle.chassis);
@@ -529,7 +529,7 @@ export default function BabylonRacingGame({
       if (weatherConfig.isWet) {
         rainSpraySystem = new RainSpraySystem(
           scene,
-          [vehicle.wheelRL, vehicle.wheelRR],
+          [vehicle.contactPatchNodes[2], vehicle.contactPatchNodes[3]],
           gfxConfig.particleDensity
         );
       }
@@ -553,7 +553,9 @@ export default function BabylonRacingGame({
       physicsRef.current.steeringSensitivity = steeringSensitivityRef.current;
       physicsRef.current.reset(
         startPt,
-        startHeading
+        startHeading,
+        track,
+        spline
       );
       collisionSystem.reset();
       cameraJoltRef.current = 0;
@@ -578,7 +580,7 @@ export default function BabylonRacingGame({
         aiSim.cars.forEach((aiCar) => {
           const aiVeh = new BabylonVehicle(aiCar.id, aiCar.liveryIndex, scene, aiCar.number);
           aiVeh.root.position.copyFrom(aiCar.position);
-          aiVeh.root.rotation.y = aiCar.heading;
+          aiVeh.setRoadOrientation(aiCar.surfaceForward, aiCar.surfaceNormal);
           aiVehicles.push(aiVeh);
           if (shadowGen) {
             for (const caster of aiVeh.shadowCasters) {
@@ -778,19 +780,20 @@ export default function BabylonRacingGame({
             tData.drsLocked = physicsRef.current.drsLockedTimer > 0;
           }
 
-          // Update Babylon Vehicle Position & Rotation (post-collision separation)
+          // Update Babylon Vehicle Position & Surface-Aligned Rotation (post-collision separation)
           const p = physicsRef.current.position;
           const px = Number.isFinite(p.x) ? p.x : startPt.x;
-          const py = Number.isFinite(p.y) ? p.y : startPt.y;
+          const py = Number.isFinite(p.y) ? p.y : startPt.y + 0.03;
           const pz = Number.isFinite(p.z) ? p.z : startPt.z;
           const heading = Number.isFinite(physicsRef.current.heading) ? physicsRef.current.heading : 0;
           const pitch = Number.isFinite(physicsRef.current.pitch) ? physicsRef.current.pitch : 0;
           const roll = Number.isFinite(physicsRef.current.roll) ? physicsRef.current.roll : 0;
 
           vehicle.root.position.set(px, py, pz);
-          vehicle.root.rotation.y = heading;
-          vehicle.root.rotation.x = pitch;
-          vehicle.root.rotation.z = roll;
+          vehicle.setRoadOrientation(
+            physicsRef.current.surfaceForward,
+            physicsRef.current.surfaceNormal
+          );
 
           // Update Wheels, Steering, Suspension, LCD & Brake Glow
           const safeSpeedVal = Number.isFinite(physicsRef.current.speed) ? physicsRef.current.speed : 0;
@@ -806,7 +809,9 @@ export default function BabylonRacingGame({
             tData.drsActive,
             tData.gear,
             tData.rpmRatio,
-            tData.suspensionOffsets
+            tData.suspensionOffsets,
+            pitch,
+            roll
           );
 
           // Update Dynamic VFX (4-Wheel Smoke, Skidmarks, Sparks, Wet Rain Spray)
@@ -814,7 +819,21 @@ export default function BabylonRacingGame({
             tireSmokeSystem.update(tData.tireSlip, isBrakingInput, tData.speedMs, tData.isLockup, safeSteerVal);
           }
           if (skidmarkSystem) {
-            skidmarkSystem.update(px, py, pz, heading, tData.speedMs, tData.isLockup, tData.tireSlip, safeSteerVal);
+            const surfNorm = physicsRef.current.surfaceNormal;
+            const slopeRightY = -(surfNorm.x * physicsRef.current.right.x + surfNorm.z * physicsRef.current.right.z);
+            skidmarkSystem.update(
+              px,
+              py,
+              pz,
+              heading,
+              tData.speedMs,
+              tData.isLockup,
+              tData.tireSlip,
+              safeSteerVal,
+              isBrakingInput,
+              physicsRef.current.surfaceForward.y,
+              slopeRightY
+            );
           }
           if (rainSpraySystem) {
             rainSpraySystem.update(tData.speedMs, weatherConfig.wetness);
@@ -956,7 +975,7 @@ export default function BabylonRacingGame({
               const aiMesh = aiVehicles[i];
               if (aiMesh && aiCar) {
                 aiMesh.root.position.copyFrom(aiCar.position);
-                aiMesh.root.rotation.y = aiCar.heading;
+                aiMesh.setRoadOrientation(aiCar.surfaceForward, aiCar.surfaceNormal);
                 aiMesh.update(aiCar.speed, aiCar.steerAngle, dt, false, 150, false);
               }
             }

@@ -4,7 +4,7 @@
 
 import { Vector3 } from "@babylonjs/core";
 import { Track } from "@/data/tracks";
-import { Spline3D } from "@/lib/math/Spline3D";
+import { Spline3D, RoadSurfaceSample } from "@/lib/math/Spline3D";
 
 function clamp(val: number, min: number, max: number): number {
   if (!Number.isFinite(val)) return min;
@@ -45,6 +45,8 @@ export interface AICarState {
   lastTangentZ: number;
   lastNormalX: number;
   lastNormalZ: number;
+  surfaceForward: Vector3;
+  surfaceNormal: Vector3;
 }
 
 export const AI_ROSTER = [
@@ -66,6 +68,24 @@ export class AISimulator {
   private _scratchLookaheadTan = new Vector3();
   private _scratchSide = new Vector3();
   private _scratchTarget = new Vector3();
+  private _surfSample: RoadSurfaceSample = {
+    roadY: 0.03,
+    normal: new Vector3(0, 1, 0),
+    tangent: new Vector3(0, 0, 1),
+    bankedSide: new Vector3(-1, 0, 0)
+  };
+  private _surfFrontSample: RoadSurfaceSample = {
+    roadY: 0.03,
+    normal: new Vector3(0, 1, 0),
+    tangent: new Vector3(0, 0, 1),
+    bankedSide: new Vector3(-1, 0, 0)
+  };
+  private _surfRearSample: RoadSurfaceSample = {
+    roadY: 0.03,
+    normal: new Vector3(0, 1, 0),
+    tangent: new Vector3(0, 0, 1),
+    bankedSide: new Vector3(-1, 0, 0)
+  };
 
   public initializeGrid(track: Track, spline: Spline3D) {
     this.cars = AI_ROSTER.map((driver, index) => {
@@ -87,6 +107,8 @@ export class AISimulator {
 
       const side = Vector3.Cross(tangent, this._up).normalize();
       const pos = startPt.clone().addInPlace(side.scale(lateral));
+      spline.sampleRoadSurface(tStart, lateral, track.width, this._surfSample);
+      pos.y = this._surfSample.roadY;
 
       return {
         id: `ai-${driver.number}`,
@@ -109,7 +131,9 @@ export class AISimulator {
         lastTangentX: tangent.x,
         lastTangentZ: tangent.z,
         lastNormalX: side.x,
-        lastNormalZ: side.z
+        lastNormalZ: side.z,
+        surfaceForward: tangent.clone(),
+        surfaceNormal: this._surfSample.normal.clone()
       };
     });
   }
@@ -399,7 +423,21 @@ export class AISimulator {
       // Smooth position interpolation (yields gently during collision recovery)
       const posBlend = car.collisionRecoveryTimer > 0 ? Math.min(1.0, safeDt * 6) : Math.min(1.0, safeDt * 18);
       Vector3.LerpToRef(car.position, this._scratchTarget, posBlend, car.position);
-      car.position.y = this._scratchPt.y;
+
+      // Sample exact 2-axle road surface height & normal so AI tires stay planted on hills & banking
+      spline.sampleRoadSurface(car.t, car.lateralOffset, track.width, this._surfSample);
+      spline.sampleRoadSurface(car.t + 1.45 / trackLen, car.lateralOffset, track.width, this._surfFrontSample);
+      spline.sampleRoadSurface(car.t - 1.15 / trackLen, car.lateralOffset, track.width, this._surfRearSample);
+      const axleInterpY =
+        this._surfRearSample.roadY +
+        (this._surfFrontSample.roadY - this._surfRearSample.roadY) * (1.15 / 2.60);
+      car.position.y = Math.max(this._surfSample.roadY, axleInterpY);
+      car.surfaceNormal.copyFrom(this._surfSample.normal);
+      const fwdX = Math.sin(car.heading);
+      const fwdZ = Math.cos(car.heading);
+      car.surfaceForward
+        .set(fwdX * 2.60, this._surfFrontSample.roadY - this._surfRearSample.roadY, fwdZ * 2.60)
+        .normalize();
 
       if (!Number.isFinite(car.position.x) || !Number.isFinite(car.position.y) || !Number.isFinite(car.position.z)) {
         car.position.copyFrom(this._scratchPt);

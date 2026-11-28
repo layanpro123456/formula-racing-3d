@@ -4,7 +4,7 @@
 
 import { Vector3 } from "@babylonjs/core";
 import { Track } from "@/data/tracks";
-import { Spline3D } from "@/lib/math/Spline3D";
+import { Spline3D, RoadSurfaceSample } from "@/lib/math/Spline3D";
 
 function clamp(val: number, min: number, max: number): number {
   if (!Number.isFinite(val)) return min;
@@ -83,6 +83,10 @@ export class VehiclePhysics {
   public pitch: number = 0;
   public roll: number = 0;
 
+  // Road surface orientation at vehicle position (pitch/roll aligned to hills & banking)
+  public surfaceForward: Vector3 = new Vector3(0, 0, 1);
+  public surfaceNormal: Vector3 = new Vector3(0, 1, 0);
+
   // G-forces
   public gForceLat: number = 0;
   public gForceLong: number = 0;
@@ -101,6 +105,25 @@ export class VehiclePhysics {
   private _splinePt = new Vector3();
   private _splineTangent = new Vector3(0, 0, 1);
   private _splineNormal = new Vector3(1, 0, 0);
+  private _centerSurface: RoadSurfaceSample = {
+    roadY: 0.03,
+    normal: new Vector3(0, 1, 0),
+    tangent: new Vector3(0, 0, 1),
+    bankedSide: new Vector3(-1, 0, 0)
+  };
+  private _frontSurface: RoadSurfaceSample = {
+    roadY: 0.03,
+    normal: new Vector3(0, 1, 0),
+    tangent: new Vector3(0, 0, 1),
+    bankedSide: new Vector3(-1, 0, 0)
+  };
+  private _rearSurface: RoadSurfaceSample = {
+    roadY: 0.03,
+    normal: new Vector3(0, 1, 0),
+    tangent: new Vector3(0, 0, 1),
+    bankedSide: new Vector3(-1, 0, 0)
+  };
+  private _targetSurfForward = new Vector3(0, 0, 1);
 
   // Automatic Transmission state
   public shiftCooldown: number = 0;
@@ -157,13 +180,24 @@ export class VehiclePhysics {
   // Calibrated base acceleration per gear (m/s²)
   private readonly gearBaseAccel = [0, 18.2, 14.8, 12.5, 10.5, 8.8, 7.4, 6.2, 5.2];
 
-  public reset(startPos: Vector3, startHeading: number) {
+  public reset(startPos: Vector3, startHeading: number, track?: Track, spline?: Spline3D) {
     this.position.copyFrom(startPos);
     if (!Number.isFinite(this.position.x) || !Number.isFinite(this.position.y) || !Number.isFinite(this.position.z)) {
       this.position.set(0, 0, 0);
     }
     this.velocity.set(0, 0, 0);
     this.heading = Number.isFinite(startHeading) ? startHeading : 0;
+    this.forward.set(Math.sin(this.heading), 0, Math.cos(this.heading)).normalize();
+    this.right.set(this.forward.z, 0, -this.forward.x).normalize();
+    this.surfaceForward.copyFrom(this.forward);
+    this.surfaceNormal.set(0, 1, 0);
+    if (track && spline) {
+      spline.sampleRoadSurface(0, 0, track.width, this._centerSurface);
+      this.position.y = this._centerSurface.roadY;
+      this.surfaceNormal.copyFrom(this._centerSurface.normal);
+    } else {
+      this.position.y += 0.03;
+    }
     this.speed = 0;
     this.lateralVelocity = 0;
     this.steerAngle = 0;
@@ -393,9 +427,40 @@ export class VehiclePhysics {
     // 10. Track Query & Surface Classification (Executed AFTER position integration)
     this.queryTrackPosition(spline, track);
 
-    // Ground elevation clamping along track
-    if (Number.isFinite(this._splinePt.y)) {
-      this.position.y = lerp(this.position.y, this._splinePt.y, safeDt * 12);
+    // Exact 2-axle road surface height & normal sampling (eliminates drowning tires on slopes & banking)
+    const trackLen = spline.totalLength > 0 ? spline.totalLength : 3500;
+    const fwdDotTan = this.forward.x * this._splineTangent.x + this.forward.z * this._splineTangent.z;
+    const fwdDotSide = this.forward.x * this._splineNormal.x + this.forward.z * this._splineNormal.z;
+    const frontU = this.currentT + (1.45 * fwdDotTan) / trackLen;
+    const rearU = this.currentT - (1.15 * fwdDotTan) / trackLen;
+    const frontLat = this.signedLateralDistance + 1.45 * fwdDotSide;
+    const rearLat = this.signedLateralDistance - 1.15 * fwdDotSide;
+
+    spline.sampleRoadSurface(this.currentT, this.signedLateralDistance, track.width, this._centerSurface);
+    spline.sampleRoadSurface(frontU, frontLat, track.width, this._frontSurface);
+    spline.sampleRoadSurface(rearU, rearLat, track.width, this._rearSurface);
+
+    const axleInterpY = this._rearSurface.roadY + (this._frontSurface.roadY - this._rearSurface.roadY) * (1.15 / 2.60);
+    const targetRoadY = Math.max(this._centerSurface.roadY, axleInterpY);
+
+    if (Number.isFinite(targetRoadY)) {
+      this.position.y = lerp(this.position.y, targetRoadY, Math.min(1, safeDt * 22));
+    }
+
+    // Orient surfaceForward along actual front-to-rear axle road slope, orthogonalized against surfaceNormal
+    const slopeY = this._frontSurface.roadY - this._rearSurface.roadY;
+    this._targetSurfForward.set(this.forward.x * 2.60, slopeY, this.forward.z * 2.60).normalize();
+    Vector3.LerpToRef(this.surfaceForward, this._targetSurfForward, Math.min(1, safeDt * 18), this.surfaceForward);
+    if (this.surfaceForward.lengthSquared() > 1e-6) {
+      this.surfaceForward.normalize();
+    } else {
+      this.surfaceForward.copyFrom(this.forward);
+    }
+    Vector3.LerpToRef(this.surfaceNormal, this._centerSurface.normal, Math.min(1, safeDt * 18), this.surfaceNormal);
+    if (this.surfaceNormal.lengthSquared() > 1e-6) {
+      this.surfaceNormal.normalize();
+    } else {
+      this.surfaceNormal.set(0, 1, 0);
     }
 
     // 11. Non-Radial Barrier Collision Resolution
@@ -517,8 +582,9 @@ export class VehiclePhysics {
    */
   public enforceBarrierBounds(track: Track, spline: Spline3D, dt: number): void {
     this.queryTrackPosition(spline, track);
-    if (Number.isFinite(this._splinePt.y)) {
-      this.position.y = lerp(this.position.y, this._splinePt.y, Math.min(1, dt * 16));
+    spline.sampleRoadSurface(this.currentT, this.signedLateralDistance, track.width, this._centerSurface);
+    if (Number.isFinite(this._centerSurface.roadY)) {
+      this.position.y = lerp(this.position.y, this._centerSurface.roadY, Math.min(1, dt * 20));
     }
     this.resolveBarrierCollisions(track, dt);
     this._telemetryData.currentT = Number.isFinite(this.currentT) ? this.currentT : 0;

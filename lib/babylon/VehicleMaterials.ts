@@ -13,6 +13,7 @@ interface CachedVehicleTextures {
   carbonBump: DynamicTexture;
   tireTreadBump: DynamicTexture;
   contactShadowTex: DynamicTexture;
+  wheelContactShadowTex: DynamicTexture;
 }
 
 const sceneTextureCache = new WeakMap<Scene, CachedVehicleTextures>();
@@ -106,11 +107,34 @@ export function getSharedVehicleTextures(scene: Scene): CachedVehicleTextures {
     contactShadowTex.update();
   }
 
+  // 4. Per-Wheel Soft Radial Contact Shadow Texture (Ambient Occlusion under rubber)
+  const wheelContactShadowTex = new DynamicTexture("f1WheelContactShadowTex", { width: 128, height: 128 }, scene, false);
+  wheelContactShadowTex.hasAlpha = true;
+  const wsCtx = wheelContactShadowTex.getContext() as CanvasRenderingContext2D;
+  if (wsCtx) {
+    wsCtx.clearRect(0, 0, 128, 128);
+    wsCtx.save();
+    wsCtx.translate(64, 64);
+    wsCtx.scale(58, 60);
+    const grad = wsCtx.createRadialGradient(0, 0, 0.12, 0, 0, 1.0);
+    grad.addColorStop(0.0, "rgba(0, 0, 0, 0.92)");
+    grad.addColorStop(0.45, "rgba(0, 0, 0, 0.65)");
+    grad.addColorStop(0.75, "rgba(0, 0, 0, 0.25)");
+    grad.addColorStop(1.0, "rgba(0, 0, 0, 0.0)");
+    wsCtx.fillStyle = grad;
+    wsCtx.beginPath();
+    wsCtx.arc(0, 0, 1.0, 0, Math.PI * 2);
+    wsCtx.fill();
+    wsCtx.restore();
+    wheelContactShadowTex.update();
+  }
+
   const entry: CachedVehicleTextures = {
     carbonAlbedo,
     carbonBump,
     tireTreadBump,
-    contactShadowTex
+    contactShadowTex,
+    wheelContactShadowTex
   };
   sceneTextureCache.set(scene, entry);
   return entry;
@@ -123,6 +147,8 @@ export interface VehicleMaterialSet {
   carbonMat: PBRMaterial;
   rubberMat: PBRMaterial;
   rimMat: PBRMaterial;
+  spokeMat: PBRMaterial;
+  blurredWheelMat: StandardMaterial;
   caliperMat: PBRMaterial;
   exhaustMat: PBRMaterial;
   brakeDiscMat: PBRMaterial;
@@ -130,6 +156,7 @@ export interface VehicleMaterialSet {
   visorMat: PBRMaterial;
   rainLightMat: PBRMaterial;
   contactShadowMat: StandardMaterial;
+  wheelContactShadowMat: StandardMaterial;
   sidewallMat: StandardMaterial;
 }
 
@@ -217,13 +244,77 @@ export function createVehicleMaterials(
   rubberMat.roughness = 0.56;
   rubberMat.metallic = 0.04;
 
-  // 6. Forged Alloy Rim / Aero Wheel Cover
+  // 6. Forged Alloy Rim / Aero Wheel Cover & Crisp Spokes
   const rimMat = new PBRMaterial(`${name}_rimMat`, scene);
   rimMat.albedoColor = new Color3(0.11, 0.12, 0.14);
   rimMat.metallic = 0.92;
   rimMat.roughness = 0.18;
   rimMat.clearCoat.isEnabled = true;
   rimMat.clearCoat.intensity = 0.75;
+
+  const spokeMat = new PBRMaterial(`${name}_spokeMat`, scene);
+  spokeMat.albedoColor = new Color3(0.16, 0.17, 0.20);
+  spokeMat.metallic = 0.92;
+  spokeMat.roughness = 0.18;
+  spokeMat.transparencyMode = PBRMaterial.PBRMATERIAL_ALPHABLEND;
+  spokeMat.alpha = 1.0;
+
+  // 6b. High-Speed Radial Motion-Blur Wheel Overlay (eliminates wagon-wheel strobing)
+  const wheelBlurTex = new DynamicTexture(`${name}_wheelBlurTex`, { width: 256, height: 256 }, scene, false);
+  wheelBlurTex.hasAlpha = true;
+  const wbCtx = wheelBlurTex.getContext() as CanvasRenderingContext2D;
+  if (wbCtx) {
+    wbCtx.clearRect(0, 0, 256, 256);
+    const cx = 128;
+    const cy = 128;
+
+    // Subtle dark rubber sidewall motion ring
+    wbCtx.strokeStyle = "rgba(18, 20, 24, 0.78)";
+    wbCtx.lineWidth = 42;
+    wbCtx.beginPath();
+    wbCtx.arc(cx, cy, 102, 0, Math.PI * 2);
+    wbCtx.stroke();
+
+    // Radially blurred alloy spoke disc (concentric swept streaks)
+    const rimGrad = wbCtx.createRadialGradient(cx, cy, 14, cx, cy, 86);
+    rimGrad.addColorStop(0.0, "rgba(38, 41, 48, 0.96)");
+    rimGrad.addColorStop(0.28, "rgba(56, 60, 70, 0.72)");
+    rimGrad.addColorStop(0.62, "rgba(42, 46, 54, 0.80)");
+    rimGrad.addColorStop(0.92, "rgba(28, 31, 36, 0.85)");
+    rimGrad.addColorStop(1.0, "rgba(20, 22, 26, 0.0)");
+    wbCtx.fillStyle = rimGrad;
+    wbCtx.beginPath();
+    wbCtx.arc(cx, cy, 86, 0, Math.PI * 2);
+    wbCtx.fill();
+
+    // Motion-streaked concentric spoke rings
+    for (let r = 28; r <= 76; r += 8) {
+      wbCtx.strokeStyle = r % 16 === 0 ? "rgba(130, 138, 152, 0.24)" : "rgba(22, 24, 28, 0.35)";
+      wbCtx.lineWidth = 3.2;
+      wbCtx.beginPath();
+      wbCtx.arc(cx, cy, r, 0, Math.PI * 2);
+      wbCtx.stroke();
+    }
+
+    // Blurred livery compound sidewall stripe
+    wbCtx.strokeStyle = livery.accent;
+    wbCtx.globalAlpha = 0.85;
+    wbCtx.lineWidth = 7;
+    wbCtx.beginPath();
+    wbCtx.arc(cx, cy, 98, 0, Math.PI * 2);
+    wbCtx.stroke();
+    wbCtx.globalAlpha = 1.0;
+
+    wheelBlurTex.update();
+  }
+
+  const blurredWheelMat = new StandardMaterial(`${name}_blurredWheelMat`, scene);
+  blurredWheelMat.diffuseTexture = wheelBlurTex;
+  blurredWheelMat.useAlphaFromDiffuseTexture = true;
+  blurredWheelMat.transparencyMode = StandardMaterial.MATERIAL_ALPHABLEND;
+  blurredWheelMat.backFaceCulling = false;
+  blurredWheelMat.specularColor = new Color3(0.28, 0.30, 0.34);
+  blurredWheelMat.alpha = 0.0;
 
   // 7. Anodized Brake Caliper
   const caliperMat = new PBRMaterial(`${name}_caliperMat`, scene);
@@ -274,15 +365,30 @@ export function createVehicleMaterials(
   const sidewallMat = new StandardMaterial(`${name}_stripeMat`, scene);
   sidewallMat.diffuseColor = Color3.FromHexString(livery.accent);
   sidewallMat.emissiveColor = Color3.FromHexString(livery.accent).scale(0.18);
+  sidewallMat.transparencyMode = StandardMaterial.MATERIAL_ALPHABLEND;
+  sidewallMat.alpha = 1.0;
 
-  // 13. Soft Ground Contact Shadow Material
+  // 13. Soft Ground Contact Shadow Material (Undertray & Per-Wheel AO)
   const contactShadowMat = new StandardMaterial(`${name}_contactShadowMat`, scene);
   contactShadowMat.diffuseTexture = shared.contactShadowTex;
   contactShadowMat.useAlphaFromDiffuseTexture = true;
   contactShadowMat.transparencyMode = StandardMaterial.MATERIAL_ALPHABLEND;
   contactShadowMat.disableLighting = true;
+  contactShadowMat.disableDepthWrite = true;
   contactShadowMat.emissiveColor = new Color3(0, 0, 0);
   contactShadowMat.zOffset = -1;
+  contactShadowMat.zOffsetUnits = -1;
+
+  const wheelContactShadowMat = new StandardMaterial(`${name}_wheelContactShadowMat`, scene);
+  wheelContactShadowMat.diffuseTexture = shared.wheelContactShadowTex;
+  wheelContactShadowMat.useAlphaFromDiffuseTexture = true;
+  wheelContactShadowMat.transparencyMode = StandardMaterial.MATERIAL_ALPHABLEND;
+  wheelContactShadowMat.disableLighting = true;
+  wheelContactShadowMat.disableDepthWrite = true;
+  wheelContactShadowMat.emissiveColor = new Color3(0, 0, 0);
+  wheelContactShadowMat.alpha = 0.76;
+  wheelContactShadowMat.zOffset = -2;
+  wheelContactShadowMat.zOffsetUnits = -2;
 
   return {
     bodyMat,
@@ -291,6 +397,8 @@ export function createVehicleMaterials(
     carbonMat,
     rubberMat,
     rimMat,
+    spokeMat,
+    blurredWheelMat,
     caliperMat,
     exhaustMat,
     brakeDiscMat,
@@ -298,6 +406,7 @@ export function createVehicleMaterials(
     visorMat,
     rainLightMat,
     contactShadowMat,
+    wheelContactShadowMat,
     sidewallMat
   };
 }

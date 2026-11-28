@@ -293,10 +293,17 @@ export function createBabylonTrack(
     const u = ((gridStartU + (i / gridSteps) * (gridEndU - gridStartU)) % 1 + 1) % 1;
     spline.getPointAtToRef(u, pt);
     spline.getTangentAtToRef(u, tangent);
+    const nextU = (u + 0.005) % 1.0;
+    spline.getTangentAtToRef(nextU, nextTan);
+    Vector3.CrossToRef(tangent, nextTan, cross);
+    const bankingAngle = Math.max(-0.10, Math.min(0.10, cross.y * 18.0));
     Vector3.CrossToRef(tangent, up, side);
     side.normalize();
-    gridLeft.push(pt.add(side.scale(halfW - 0.25)).add(new Vector3(0, 0.036, 0)));
-    gridRight.push(pt.add(side.scale(-(halfW - 0.25))).add(new Vector3(0, 0.036, 0)));
+    const bankAxis = up.add(side.scale(-bankingAngle)).normalize();
+    const bankedSide = Vector3.Cross(tangent, bankAxis).normalize();
+
+    gridLeft.push(pt.add(bankedSide.scale(halfW - 0.25)).add(new Vector3(0, 0.038, 0)));
+    gridRight.push(pt.add(bankedSide.scale(-(halfW - 0.25))).add(new Vector3(0, 0.038, 0)));
   }
 
   const startGridMesh = MeshBuilder.CreateRibbon(
